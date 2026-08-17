@@ -767,7 +767,7 @@ Instead, it provides lightweight **local host intelligence** focused specificall
 
 ### Next
 
-- [ ] Controlled real-world rollback test
+- [x] Controlled real-world rollback test
 - [ ] Periodic automatic update checks
 - [ ] Persistent update state
 - [ ] Controlled automatic update policy
