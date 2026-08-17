@@ -183,6 +183,102 @@ func runUpdateStatus() {
 			state.LastResult,
 		)
 	}
+
+	fmt.Println()
+	fmt.Println(
+		"Installation:",
+	)
+
+	if state.LastInstallAttempt == nil {
+
+		fmt.Println(
+			"  Last attempt: none",
+		)
+
+		return
+	}
+
+	fmt.Println(
+		"  Last attempt:",
+		state.LastInstallAttempt.UTC().Format(
+			"2006-01-02 15:04:05 UTC",
+		),
+	)
+
+	fmt.Println(
+		"  From:",
+		state.LastInstallFromVersion,
+	)
+
+	fmt.Println(
+		"  Target:",
+		state.LastInstallTarget,
+	)
+
+	switch state.LastInstallResult {
+
+	case updater.InstallResultInProgress:
+
+		fmt.Println(
+			"  Result: IN PROGRESS",
+		)
+
+	case updater.InstallResultSuccess:
+
+		fmt.Println(
+			"  Result: SUCCESS",
+		)
+
+		fmt.Println(
+			"  Installed:",
+			state.LastInstalledVersion,
+		)
+
+	case updater.InstallResultFailed:
+
+		fmt.Println(
+			"  Result: FAILED",
+		)
+
+		fmt.Println(
+			"  Error:",
+			state.LastInstallError,
+		)
+
+		if state.LastRollback {
+
+			if state.LastRollbackVerified {
+
+				fmt.Println(
+					"  Rollback: VERIFIED",
+				)
+
+				fmt.Println(
+					"  Recovered:",
+					state.RecoveredVersion,
+				)
+
+			} else {
+
+				fmt.Println(
+					"  Rollback: NOT VERIFIED",
+				)
+			}
+
+		} else {
+
+			fmt.Println(
+				"  Rollback: not required",
+			)
+		}
+
+	default:
+
+		fmt.Println(
+			"  Result:",
+			state.LastInstallResult,
+		)
+	}
 }
 
 func runUpdateCheck() {
@@ -389,6 +485,25 @@ func runUpdateInstall() {
 		check.LatestVersion,
 	)
 
+	stateStore, err := persistUpdateCheckState(
+		cfg,
+		check,
+	)
+
+	if err != nil {
+
+		fmt.Println(
+			"Status: UPDATE STATE ERROR",
+		)
+
+		fmt.Println(
+			"Error:",
+			err,
+		)
+
+		return
+	}
+
 	if !check.UpdateAvailable {
 
 		fmt.Println(
@@ -402,11 +517,36 @@ func runUpdateInstall() {
 		"Status: UPDATE AVAILABLE",
 	)
 
+	if err := startUpdateInstallLifecycle(
+		stateStore,
+		version.Version,
+		check.LatestVersion,
+	); err != nil {
+
+		fmt.Println(
+			"Status: UPDATE STATE ERROR",
+		)
+
+		fmt.Println(
+			"Error:",
+			err,
+		)
+
+		return
+	}
+
 	assets, err := updater.SelectCurrentPlatformAssets(
 		check.Release,
 	)
 
 	if err != nil {
+
+		recordUpdateInstallFailure(
+			stateStore,
+			err,
+			false,
+			false,
+		)
 
 		fmt.Println(
 			"Status: RELEASE ASSET ERROR",
@@ -443,6 +583,13 @@ func runUpdateInstall() {
 
 	if err != nil {
 
+		recordUpdateInstallFailure(
+			stateStore,
+			err,
+			false,
+			false,
+		)
+
 		fmt.Println(
 			"Status: WORK DIRECTORY ERROR",
 		)
@@ -475,6 +622,13 @@ func runUpdateInstall() {
 	)
 
 	if err != nil {
+
+		recordUpdateInstallFailure(
+			stateStore,
+			err,
+			false,
+			false,
+		)
 
 		fmt.Println(
 			"Status: DOWNLOAD VERIFICATION FAILED",
@@ -516,6 +670,13 @@ func runUpdateInstall() {
 
 	if err != nil {
 
+		recordUpdateInstallFailure(
+			stateStore,
+			err,
+			false,
+			false,
+		)
+
 		fmt.Println(
 			"Status: RELEASE VALIDATION FAILED",
 		)
@@ -556,6 +717,13 @@ func runUpdateInstall() {
 
 	if err != nil {
 
+		recordUpdateInstallFailure(
+			stateStore,
+			err,
+			activation.RolledBack,
+			activation.RollbackVerified,
+		)
+
 		fmt.Println(
 			"Status: UPDATE FAILED",
 		)
@@ -583,6 +751,10 @@ func runUpdateInstall() {
 
 		return
 	}
+
+	recordUpdateInstallSuccess(
+		stateStore,
+	)
 
 	fmt.Println()
 	fmt.Println(

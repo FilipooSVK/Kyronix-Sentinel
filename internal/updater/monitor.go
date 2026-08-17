@@ -236,7 +236,7 @@ func (m *Monitor) persistState(
 	state UpdateState,
 ) {
 
-	if err := m.stateStore.Save(
+	if err := m.stateStore.SaveCheck(
 		state,
 	); err != nil {
 

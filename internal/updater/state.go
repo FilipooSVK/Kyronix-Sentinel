@@ -8,16 +8,20 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
 const (
 	UpdateResultSuccess = "success"
+	UpdateResultError   = "error"
 
-	UpdateResultError = "error"
+	InstallResultInProgress = "in_progress"
+	InstallResultSuccess    = "success"
+	InstallResultFailed     = "failed"
 )
 
-// UpdateState represents the most recent automatic update check.
+// UpdateState represents persistent Sentinel update state.
 type UpdateState struct {
 	LastCheck time.Time `json:"last_check"`
 
@@ -32,6 +36,24 @@ type UpdateState struct {
 	LastResult string `json:"last_result"`
 
 	LastError string `json:"last_error,omitempty"`
+
+	LastInstallAttempt *time.Time `json:"last_install_attempt,omitempty"`
+
+	LastInstallFromVersion string `json:"last_install_from_version,omitempty"`
+
+	LastInstallTarget string `json:"last_install_target,omitempty"`
+
+	LastInstallResult string `json:"last_install_result,omitempty"`
+
+	LastInstallError string `json:"last_install_error,omitempty"`
+
+	LastInstalledVersion string `json:"last_installed_version,omitempty"`
+
+	LastRollback bool `json:"last_rollback,omitempty"`
+
+	LastRollbackVerified bool `json:"last_rollback_verified,omitempty"`
+
+	RecoveredVersion string `json:"recovered_version,omitempty"`
 }
 
 // StateStore persists Sentinel update state.
@@ -67,13 +89,316 @@ func (s *StateStore) Load() (
 	error,
 ) {
 
-	if s == nil ||
-		s.path == "" {
+	if err := s.validatePath(); err != nil {
+		return UpdateState{}, err
+	}
 
-		return UpdateState{}, fmt.Errorf(
-			"update state path is empty",
+	return s.loadUnlocked()
+}
+
+// Save atomically persists the complete update state.
+func (s *StateStore) Save(
+	state UpdateState,
+) error {
+
+	if err := s.validatePath(); err != nil {
+		return err
+	}
+
+	if err := validateUpdateState(
+		state,
+	); err != nil {
+
+		return err
+	}
+
+	return s.withExclusiveLock(
+		func() error {
+
+			return s.saveUnlocked(
+				state,
+			)
+		},
+	)
+}
+
+// SaveCheck persists update-check information while preserving
+// the latest installation lifecycle state.
+func (s *StateStore) SaveCheck(
+	state UpdateState,
+) error {
+
+	if err := s.validatePath(); err != nil {
+		return err
+	}
+
+	if err := validateCheckState(
+		state,
+	); err != nil {
+
+		return err
+	}
+
+	return s.withExclusiveLock(
+		func() error {
+
+			existing, err := s.loadUnlocked()
+
+			if err != nil {
+
+				if !os.IsNotExist(
+					err,
+				) {
+
+					return err
+				}
+
+			} else {
+
+				copyInstallLifecycle(
+					&state,
+					existing,
+				)
+			}
+
+			return s.saveUnlocked(
+				state,
+			)
+		},
+	)
+}
+
+// RecordInstallStarted records the beginning of a manual
+// Sentinel update installation.
+func (s *StateStore) RecordInstallStarted(
+	at time.Time,
+	fromVersion string,
+	targetVersion string,
+) error {
+
+	if err := s.validatePath(); err != nil {
+		return err
+	}
+
+	if at.IsZero() {
+
+		return fmt.Errorf(
+			"install attempt time is empty",
 		)
 	}
+
+	if !IsValidVersion(
+		fromVersion,
+	) {
+
+		return fmt.Errorf(
+			"invalid install source version: %s",
+			fromVersion,
+		)
+	}
+
+	if !IsValidVersion(
+		targetVersion,
+	) {
+
+		return fmt.Errorf(
+			"invalid install target version: %s",
+			targetVersion,
+		)
+	}
+
+	if !IsNewerVersion(
+		fromVersion,
+		targetVersion,
+	) {
+
+		return fmt.Errorf(
+			"install target version %s is not newer than %s",
+			NormalizeVersion(
+				targetVersion,
+			),
+			NormalizeVersion(
+				fromVersion,
+			),
+		)
+	}
+
+	return s.updateExisting(
+		func(state *UpdateState) error {
+
+			attempt := at.UTC()
+
+			state.LastInstallAttempt = &attempt
+
+			state.LastInstallFromVersion =
+				NormalizeVersion(
+					fromVersion,
+				)
+
+			state.LastInstallTarget =
+				NormalizeVersion(
+					targetVersion,
+				)
+
+			state.LastInstallResult =
+				InstallResultInProgress
+
+			state.LastInstallError = ""
+
+			state.LastInstalledVersion = ""
+
+			state.LastRollback = false
+
+			state.LastRollbackVerified = false
+
+			state.RecoveredVersion = ""
+
+			return nil
+		},
+	)
+}
+
+// RecordInstallSuccess records a successfully activated release.
+func (s *StateStore) RecordInstallSuccess() error {
+
+	if err := s.validatePath(); err != nil {
+		return err
+	}
+
+	return s.updateExisting(
+		func(state *UpdateState) error {
+
+			if state.LastInstallResult !=
+				InstallResultInProgress {
+
+				return fmt.Errorf(
+					"no update installation is in progress",
+				)
+			}
+
+			state.LastInstallResult =
+				InstallResultSuccess
+
+			state.LastInstallError = ""
+
+			state.LastInstalledVersion =
+				state.LastInstallTarget
+
+			state.LastRollback = false
+
+			state.LastRollbackVerified = false
+
+			state.RecoveredVersion = ""
+
+			return nil
+		},
+	)
+}
+
+// RecordInstallFailure records a failed installation.
+//
+// If rollbackVerified is true, the recovered version is recorded
+// as the version from which the installation started.
+func (s *StateStore) RecordInstallFailure(
+	installError string,
+	rolledBack bool,
+	rollbackVerified bool,
+) error {
+
+	if err := s.validatePath(); err != nil {
+		return err
+	}
+
+	installError = strings.TrimSpace(
+		installError,
+	)
+
+	if installError == "" {
+
+		return fmt.Errorf(
+			"install failure error is empty",
+		)
+	}
+
+	if rollbackVerified &&
+		!rolledBack {
+
+		return fmt.Errorf(
+			"rollback cannot be verified when rollback was not attempted",
+		)
+	}
+
+	return s.updateExisting(
+		func(state *UpdateState) error {
+
+			if state.LastInstallResult !=
+				InstallResultInProgress {
+
+				return fmt.Errorf(
+					"no update installation is in progress",
+				)
+			}
+
+			state.LastInstallResult =
+				InstallResultFailed
+
+			state.LastInstallError =
+				installError
+
+			state.LastInstalledVersion = ""
+
+			state.LastRollback =
+				rolledBack
+
+			state.LastRollbackVerified =
+				rollbackVerified
+
+			state.RecoveredVersion = ""
+
+			if rollbackVerified {
+
+				state.RecoveredVersion =
+					state.LastInstallFromVersion
+			}
+
+			return nil
+		},
+	)
+}
+
+func (s *StateStore) updateExisting(
+	update func(
+		*UpdateState,
+	) error,
+) error {
+
+	return s.withExclusiveLock(
+		func() error {
+
+			state, err := s.loadUnlocked()
+
+			if err != nil {
+				return err
+			}
+
+			if err := update(
+				&state,
+			); err != nil {
+
+				return err
+			}
+
+			return s.saveUnlocked(
+				state,
+			)
+		},
+	)
+}
+
+func (s *StateStore) loadUnlocked() (
+	UpdateState,
+	error,
+) {
 
 	data, err := os.ReadFile(
 		s.path,
@@ -122,18 +447,9 @@ func (s *StateStore) Load() (
 	return state, nil
 }
 
-// Save atomically persists update state.
-func (s *StateStore) Save(
+func (s *StateStore) saveUnlocked(
 	state UpdateState,
 ) error {
-
-	if s == nil ||
-		s.path == "" {
-
-		return fmt.Errorf(
-			"update state path is empty",
-		)
-	}
 
 	if err := validateUpdateState(
 		state,
@@ -251,7 +567,94 @@ func (s *StateStore) Save(
 	return nil
 }
 
+func (s *StateStore) withExclusiveLock(
+	fn func() error,
+) error {
+
+	dir := filepath.Dir(
+		s.path,
+	)
+
+	if err := os.MkdirAll(
+		dir,
+		0755,
+	); err != nil {
+
+		return fmt.Errorf(
+			"create update state directory: %w",
+			err,
+		)
+	}
+
+	lockFile, err := os.OpenFile(
+		s.path+".lock",
+		os.O_CREATE|os.O_RDWR,
+		0644,
+	)
+
+	if err != nil {
+
+		return fmt.Errorf(
+			"open update state lock: %w",
+			err,
+		)
+	}
+
+	defer lockFile.Close()
+
+	if err := syscall.Flock(
+		int(
+			lockFile.Fd(),
+		),
+		syscall.LOCK_EX,
+	); err != nil {
+
+		return fmt.Errorf(
+			"lock update state: %w",
+			err,
+		)
+	}
+
+	defer syscall.Flock(
+		int(
+			lockFile.Fd(),
+		),
+		syscall.LOCK_UN,
+	)
+
+	return fn()
+}
+
+func (s *StateStore) validatePath() error {
+
+	if s == nil ||
+		s.path == "" {
+
+		return fmt.Errorf(
+			"update state path is empty",
+		)
+	}
+
+	return nil
+}
+
 func validateUpdateState(
+	state UpdateState,
+) error {
+
+	if err := validateCheckState(
+		state,
+	); err != nil {
+
+		return err
+	}
+
+	return validateInstallState(
+		state,
+	)
+}
+
+func validateCheckState(
 	state UpdateState,
 ) error {
 
@@ -330,4 +733,208 @@ func validateUpdateState(
 	}
 
 	return nil
+}
+
+func validateInstallState(
+	state UpdateState,
+) error {
+
+	if state.LastInstallAttempt == nil {
+
+		if state.LastInstallFromVersion != "" ||
+			state.LastInstallTarget != "" ||
+			state.LastInstallResult != "" ||
+			state.LastInstallError != "" ||
+			state.LastInstalledVersion != "" ||
+			state.LastRollback ||
+			state.LastRollbackVerified ||
+			state.RecoveredVersion != "" {
+
+			return fmt.Errorf(
+				"install lifecycle exists without install attempt",
+			)
+		}
+
+		return nil
+	}
+
+	if state.LastInstallAttempt.IsZero() {
+
+		return fmt.Errorf(
+			"install attempt time is empty",
+		)
+	}
+
+	if !IsValidVersion(
+		state.LastInstallFromVersion,
+	) {
+
+		return fmt.Errorf(
+			"invalid install source version: %s",
+			state.LastInstallFromVersion,
+		)
+	}
+
+	if !IsValidVersion(
+		state.LastInstallTarget,
+	) {
+
+		return fmt.Errorf(
+			"invalid install target version: %s",
+			state.LastInstallTarget,
+		)
+	}
+
+	switch state.LastInstallResult {
+
+	case InstallResultInProgress:
+
+		if state.LastInstallError != "" ||
+			state.LastInstalledVersion != "" ||
+			state.LastRollback ||
+			state.LastRollbackVerified ||
+			state.RecoveredVersion != "" {
+
+			return fmt.Errorf(
+				"in-progress installation contains completed lifecycle state",
+			)
+		}
+
+	case InstallResultSuccess:
+
+		if state.LastInstallError != "" {
+
+			return fmt.Errorf(
+				"successful installation contains an error",
+			)
+		}
+
+		if !IsValidVersion(
+			state.LastInstalledVersion,
+		) {
+
+			return fmt.Errorf(
+				"successful installation has invalid installed version: %s",
+				state.LastInstalledVersion,
+			)
+		}
+
+		if NormalizeVersion(
+			state.LastInstalledVersion,
+		) != NormalizeVersion(
+			state.LastInstallTarget,
+		) {
+
+			return fmt.Errorf(
+				"installed version does not match install target",
+			)
+		}
+
+		if state.LastRollback ||
+			state.LastRollbackVerified ||
+			state.RecoveredVersion != "" {
+
+			return fmt.Errorf(
+				"successful installation contains rollback state",
+			)
+		}
+
+	case InstallResultFailed:
+
+		if strings.TrimSpace(
+			state.LastInstallError,
+		) == "" {
+
+			return fmt.Errorf(
+				"failed installation has no error",
+			)
+		}
+
+		if state.LastInstalledVersion != "" {
+
+			return fmt.Errorf(
+				"failed installation contains installed version",
+			)
+		}
+
+		if state.LastRollbackVerified &&
+			!state.LastRollback {
+
+			return fmt.Errorf(
+				"verified rollback without rollback attempt",
+			)
+		}
+
+		if state.LastRollbackVerified {
+
+			if !IsValidVersion(
+				state.RecoveredVersion,
+			) {
+
+				return fmt.Errorf(
+					"verified rollback has invalid recovered version: %s",
+					state.RecoveredVersion,
+				)
+			}
+
+			if NormalizeVersion(
+				state.RecoveredVersion,
+			) != NormalizeVersion(
+				state.LastInstallFromVersion,
+			) {
+
+				return fmt.Errorf(
+					"recovered version does not match install source version",
+				)
+			}
+
+		} else if state.RecoveredVersion != "" {
+
+			return fmt.Errorf(
+				"unverified rollback contains recovered version",
+			)
+		}
+
+	default:
+
+		return fmt.Errorf(
+			"invalid install result: %s",
+			state.LastInstallResult,
+		)
+	}
+
+	return nil
+}
+
+func copyInstallLifecycle(
+	destination *UpdateState,
+	source UpdateState,
+) {
+
+	destination.LastInstallAttempt =
+		source.LastInstallAttempt
+
+	destination.LastInstallFromVersion =
+		source.LastInstallFromVersion
+
+	destination.LastInstallTarget =
+		source.LastInstallTarget
+
+	destination.LastInstallResult =
+		source.LastInstallResult
+
+	destination.LastInstallError =
+		source.LastInstallError
+
+	destination.LastInstalledVersion =
+		source.LastInstalledVersion
+
+	destination.LastRollback =
+		source.LastRollback
+
+	destination.LastRollbackVerified =
+		source.LastRollbackVerified
+
+	destination.RecoveredVersion =
+		source.RecoveredVersion
 }
