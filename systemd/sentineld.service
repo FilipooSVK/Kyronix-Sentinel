@@ -1,0 +1,23 @@
+[Unit]
+Description=Kyronix Sentinel Monitoring Daemon
+After=network-online.target
+Wants=network-online.target
+
+
+[Service]
+Type=simple
+
+User=root
+Group=root
+
+ExecStart=/usr/local/bin/sentineld \
+    --config /etc/sentinel/sentinel.yaml
+
+Restart=always
+RestartSec=5
+
+TimeoutStopSec=30
+
+
+[Install]
+WantedBy=multi-user.target

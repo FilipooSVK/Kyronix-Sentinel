@@ -1,0 +1,18 @@
+daemon:
+  interval: 30s
+
+history:
+  size: 1000
+  persistence: true
+  path: /var/lib/sentinel/history.jsonl
+
+logging:
+  level: info
+
+update:
+  enabled: true
+  owner: ""
+  repository: ""
+  auto_check: true
+  auto_install: false
+  check_interval: 24h

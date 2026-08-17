@@ -1,0 +1,79 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"kyronix/sentinel/internal/app"
+	"kyronix/sentinel/internal/config"
+	"kyronix/sentinel/internal/version"
+)
+
+func main() {
+
+	configPath := flag.String(
+		"config",
+		"configs/sentinel.yaml",
+		"path to Sentinel configuration file",
+	)
+
+	flag.Parse()
+
+	logger := log.New(
+		os.Stdout,
+		"[sentineld] ",
+		log.LstdFlags,
+	)
+
+	logger.Printf(
+		"Kyronix Sentinel daemon v%s",
+		version.Version,
+	)
+
+	cfg, err := config.Load(
+		*configPath,
+	)
+
+	if err != nil {
+
+		logger.Fatalf(
+			"configuration error: %v",
+			err,
+		)
+	}
+
+	logger.Printf(
+		"configuration loaded: %s",
+		*configPath,
+	)
+
+	engine := app.NewDefaultEngine(
+		cfg,
+	)
+
+	daemon := app.NewDaemon(
+		engine,
+		cfg.Daemon.Interval,
+		logger,
+	)
+
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		syscall.SIGINT,
+		syscall.SIGTERM,
+	)
+
+	defer stop()
+
+	if err := daemon.Run(ctx); err != nil {
+
+		logger.Fatalf(
+			"daemon failed: %v",
+			err,
+		)
+	}
+}

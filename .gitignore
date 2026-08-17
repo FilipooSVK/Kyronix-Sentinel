@@ -1,0 +1,20 @@
+# Build output
+/bin/
+/dist/
+
+# Temporary files
+*.tmp
+*.log
+*.out
+
+# Sentinel runtime/update files
+*.previous
+
+# Environment / secrets
+.env
+.env.*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

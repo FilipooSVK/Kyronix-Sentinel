@@ -1,0 +1,83 @@
+package app
+
+import (
+	"context"
+	"log"
+	"time"
+
+	"kyronix/sentinel/internal/domain"
+)
+
+// Daemon runs Sentinel engine periodically.
+type Daemon struct {
+	engine *Engine
+
+	period time.Duration
+
+	logger *log.Logger
+}
+
+// NewDaemon creates Sentinel daemon.
+func NewDaemon(
+	engine *Engine,
+	period time.Duration,
+	logger *log.Logger,
+) *Daemon {
+
+	return &Daemon{
+		engine: engine,
+		period: period,
+		logger: logger,
+	}
+}
+
+// Run starts daemon lifecycle.
+func (d *Daemon) Run(
+	ctx context.Context,
+) error {
+
+	d.logger.Println(
+		"sentineld started",
+	)
+
+	ticker := time.NewTicker(
+		d.period,
+	)
+
+	defer ticker.Stop()
+
+	for {
+
+		select {
+
+		case <-ctx.Done():
+
+			d.logger.Println(
+				"sentineld stopping",
+			)
+
+			return nil
+
+		case <-ticker.C:
+
+			result := d.engine.RunOnce()
+
+			logHealth(
+				d.logger,
+				result,
+			)
+		}
+	}
+}
+
+func logHealth(
+	logger *log.Logger,
+	result domain.HealthResult,
+) {
+
+	logger.Printf(
+		"health=%d risk=%s",
+		result.HealthScore,
+		result.FreezeRisk,
+	)
+}

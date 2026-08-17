@@ -1,0 +1,79 @@
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"kyronix/sentinel/internal/api/local"
+	"kyronix/sentinel/internal/version"
+)
+
+func main() {
+
+	if len(os.Args) < 2 {
+
+		fmt.Println(
+			"usage: sentinelctl <command>",
+		)
+
+		return
+	}
+
+	switch os.Args[1] {
+
+	case "version":
+
+		info := version.Current()
+
+		fmt.Println(
+			"Kyronix Sentinel",
+		)
+
+		fmt.Println(
+			"Version:",
+			info.Version,
+		)
+
+	case "status":
+
+		status, err := local.GetStatus(
+			local.DefaultSocket,
+		)
+
+		if err != nil {
+
+			fmt.Println(
+				"Sentinel unavailable:",
+				err,
+			)
+
+			return
+		}
+
+		fmt.Println(
+			"Kyronix Sentinel",
+		)
+
+		fmt.Println(
+			"Running:",
+			status.Running,
+		)
+
+		fmt.Println(
+			"Health:",
+			status.HealthScore,
+		)
+
+		fmt.Println(
+			"Risk:",
+			status.FreezeRisk,
+		)
+
+	default:
+
+		fmt.Println(
+			"unknown command:",
+			os.Args[1],
+		)
+	}
+}

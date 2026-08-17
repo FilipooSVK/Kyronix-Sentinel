@@ -1,0 +1,8 @@
+daemon:
+  interval: 1s
+
+history:
+  size: 10
+
+logging:
+  level: debug
