@@ -5,10 +5,16 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"time"
 )
 
-const DefaultSocket = "/run/sentinel/sentinel.sock"
+const (
+	DefaultSocket = "/run/sentinel/sentinel.sock"
+
+	serverConnectionTimeout = 5 * time.Second
+)
 
 // Server exposes Sentinel status API.
 type Server struct {
@@ -65,16 +71,21 @@ func (s *Server) UpdatePrediction(
 // Start starts unix socket server.
 func (s *Server) Start() error {
 
-	dir := filepath.Dir(s.socket)
+	dir := filepath.Dir(
+		s.socket,
+	)
 
 	if err := os.MkdirAll(
 		dir,
 		0755,
 	); err != nil {
+
 		return err
 	}
 
-	_ = os.Remove(s.socket)
+	_ = os.Remove(
+		s.socket,
+	)
 
 	listener, err := net.Listen(
 		"unix",
@@ -89,13 +100,13 @@ func (s *Server) Start() error {
 		s.socket,
 		0666,
 	); err != nil {
+
 		listener.Close()
+
 		return err
 	}
 
 	go func() {
-
-		defer listener.Close()
 
 		for {
 
@@ -105,49 +116,88 @@ func (s *Server) Start() error {
 				continue
 			}
 
-			command := make(
-				[]byte,
-				32,
+			go s.handleConnection(
+				conn,
 			)
-
-			n, _ := conn.Read(command)
-
-			request := string(command[:n])
-
-			s.mu.RLock()
-
-			status := s.status
-
-			diagnostics := s.diagnostics
-
-			prediction := s.prediction
-
-			s.mu.RUnlock()
-
-			switch request {
-
-			case "diagnose":
-
-				_ = json.NewEncoder(conn).Encode(
-					diagnostics,
-				)
-
-			case "prediction":
-
-				_ = json.NewEncoder(conn).Encode(
-					prediction,
-				)
-
-			default:
-
-				_ = json.NewEncoder(conn).Encode(
-					status,
-				)
-			}
-
-			conn.Close()
 		}
 	}()
 
 	return nil
+}
+
+func (s *Server) handleConnection(
+	conn net.Conn,
+) {
+
+	defer conn.Close()
+
+	_ = conn.SetDeadline(
+		time.Now().Add(
+			serverConnectionTimeout,
+		),
+	)
+
+	command := make(
+		[]byte,
+		32,
+	)
+
+	n, err := conn.Read(
+		command,
+	)
+
+	if err != nil {
+		return
+	}
+
+	request := strings.TrimSpace(
+		string(
+			command[:n],
+		),
+	)
+
+	s.mu.RLock()
+
+	status := s.status
+
+	diagnostics := s.diagnostics
+
+	prediction := s.prediction
+
+	s.mu.RUnlock()
+
+	switch request {
+
+	case "diagnose":
+
+		_ = json.NewEncoder(
+			conn,
+		).Encode(
+			diagnostics,
+		)
+
+	case "prediction":
+
+		_ = json.NewEncoder(
+			conn,
+		).Encode(
+			prediction,
+		)
+
+	case "status":
+
+		_ = json.NewEncoder(
+			conn,
+		).Encode(
+			status,
+		)
+
+	default:
+
+		_ = json.NewEncoder(
+			conn,
+		).Encode(
+			status,
+		)
+	}
 }

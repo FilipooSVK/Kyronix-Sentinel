@@ -3,25 +3,21 @@ package local
 import (
 	"encoding/json"
 	"net"
+	"time"
 )
 
+const clientTimeout = 5 * time.Second
+
 // GetStatus returns current Sentinel status.
-func GetStatus(socket string) (Status, error) {
-
-	conn, err := net.Dial(
-		"unix",
-		socket,
-	)
-
-	if err != nil {
-		return Status{}, err
-	}
-
-	defer conn.Close()
+func GetStatus(
+	socket string,
+) (Status, error) {
 
 	var status Status
 
-	err = json.NewDecoder(conn).Decode(
+	err := request(
+		socket,
+		"status",
 		&status,
 	)
 
@@ -29,30 +25,15 @@ func GetStatus(socket string) (Status, error) {
 }
 
 // GetDiagnostics returns current Sentinel diagnostics.
-func GetDiagnostics(socket string) (Diagnostics, error) {
-
-	conn, err := net.Dial(
-		"unix",
-		socket,
-	)
-
-	if err != nil {
-		return Diagnostics{}, err
-	}
-
-	defer conn.Close()
-
-	_, err = conn.Write(
-		[]byte("diagnose"),
-	)
-
-	if err != nil {
-		return Diagnostics{}, err
-	}
+func GetDiagnostics(
+	socket string,
+) (Diagnostics, error) {
 
 	var diagnostics Diagnostics
 
-	err = json.NewDecoder(conn).Decode(
+	err := request(
+		socket,
+		"diagnose",
 		&diagnostics,
 	)
 
@@ -60,32 +41,58 @@ func GetDiagnostics(socket string) (Diagnostics, error) {
 }
 
 // GetPrediction returns current Sentinel prediction.
-func GetPrediction(socket string) (Prediction, error) {
-
-	conn, err := net.Dial(
-		"unix",
-		socket,
-	)
-
-	if err != nil {
-		return Prediction{}, err
-	}
-
-	defer conn.Close()
-
-	_, err = conn.Write(
-		[]byte("prediction"),
-	)
-
-	if err != nil {
-		return Prediction{}, err
-	}
+func GetPrediction(
+	socket string,
+) (Prediction, error) {
 
 	var prediction Prediction
 
-	err = json.NewDecoder(conn).Decode(
+	err := request(
+		socket,
+		"prediction",
 		&prediction,
 	)
 
 	return prediction, err
+}
+
+func request(
+	socket string,
+	command string,
+	response interface{},
+) error {
+
+	conn, err := net.DialTimeout(
+		"unix",
+		socket,
+		clientTimeout,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	defer conn.Close()
+
+	if err := conn.SetDeadline(
+		time.Now().Add(
+			clientTimeout,
+		),
+	); err != nil {
+
+		return err
+	}
+
+	if _, err := conn.Write(
+		[]byte(command),
+	); err != nil {
+
+		return err
+	}
+
+	return json.NewDecoder(
+		conn,
+	).Decode(
+		response,
+	)
 }
