@@ -183,11 +183,16 @@ func startAutomaticUpdateChecker(
 		cfg.Update.Repository,
 	)
 
+	stateStore := updater.NewStateStore(
+		cfg.Update.StatePath,
+	)
+
 	monitor := updater.NewMonitor(
 		client,
 		version.Version,
 		cfg.Update.CheckInterval,
 		logger,
+		stateStore,
 	)
 
 	logger.Info(
@@ -196,6 +201,7 @@ func startAutomaticUpdateChecker(
 			"owner":          cfg.Update.Owner,
 			"repository":     cfg.Update.Repository,
 			"check_interval": cfg.Update.CheckInterval.String(),
+			"state_path":     cfg.Update.StatePath,
 			"auto_install":   false,
 		},
 	)

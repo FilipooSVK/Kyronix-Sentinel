@@ -45,6 +45,8 @@ type UpdateConfig struct {
 	AutoInstall bool `yaml:"auto_install"`
 
 	CheckInterval time.Duration `yaml:"check_interval"`
+
+	StatePath string `yaml:"state_path"`
 }
 
 // Default returns default Sentinel configuration.
@@ -72,6 +74,7 @@ func Default() Config {
 			AutoCheck:     true,
 			AutoInstall:   false,
 			CheckInterval: 24 * time.Hour,
+			StatePath:     "/var/lib/sentinel/update-state.json",
 		},
 	}
 }

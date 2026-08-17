@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -27,6 +28,20 @@ func (c *testReleaseChecker) Check(
 	return c.check(
 		ctx,
 		currentVersion,
+	)
+}
+
+func newTestStateStore(
+	t *testing.T,
+) *StateStore {
+
+	t.Helper()
+
+	return NewStateStore(
+		filepath.Join(
+			t.TempDir(),
+			"update-state.json",
+		),
 	)
 }
 
@@ -56,6 +71,7 @@ func TestMonitorRejectsInvalidInterval(
 		"0.1.1",
 		0,
 		logger,
+		newTestStateStore(t),
 	)
 
 	err := monitor.Run(
@@ -63,13 +79,14 @@ func TestMonitorRejectsInvalidInterval(
 	)
 
 	if err == nil {
+
 		t.Fatal(
 			"expected invalid interval error",
 		)
 	}
 }
 
-func TestMonitorChecksImmediately(
+func TestMonitorChecksImmediatelyAndPersistsState(
 	t *testing.T,
 ) {
 
@@ -82,6 +99,10 @@ func TestMonitorChecksImmediately(
 
 	ctx, cancel := context.WithCancel(
 		context.Background(),
+	)
+
+	store := newTestStateStore(
+		t,
 	)
 
 	checker := &testReleaseChecker{
@@ -107,6 +128,7 @@ func TestMonitorChecksImmediately(
 		"0.1.1",
 		time.Hour,
 		logger,
+		store,
 	)
 
 	if err := monitor.Run(
@@ -114,6 +136,43 @@ func TestMonitorChecksImmediately(
 	); err != nil {
 
 		t.Fatal(err)
+	}
+
+	state, err := store.Load()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if state.CurrentVersion != "v0.1.1" {
+
+		t.Fatalf(
+			"unexpected current version: %s",
+			state.CurrentVersion,
+		)
+	}
+
+	if state.LatestVersion != "v0.1.1" {
+
+		t.Fatalf(
+			"unexpected latest version: %s",
+			state.LatestVersion,
+		)
+	}
+
+	if state.UpdateAvailable {
+
+		t.Fatal(
+			"unexpected available update",
+		)
+	}
+
+	if state.LastResult != UpdateResultSuccess {
+
+		t.Fatalf(
+			"unexpected result: %s",
+			state.LastResult,
+		)
 	}
 
 	if !strings.Contains(
@@ -128,7 +187,7 @@ func TestMonitorChecksImmediately(
 	}
 }
 
-func TestMonitorLogsAvailableUpdate(
+func TestMonitorPersistsAvailableUpdate(
 	t *testing.T,
 ) {
 
@@ -141,6 +200,10 @@ func TestMonitorLogsAvailableUpdate(
 
 	ctx, cancel := context.WithCancel(
 		context.Background(),
+	)
+
+	store := newTestStateStore(
+		t,
 	)
 
 	checker := &testReleaseChecker{
@@ -166,6 +229,7 @@ func TestMonitorLogsAvailableUpdate(
 		"0.1.1",
 		time.Hour,
 		logger,
+		store,
 	)
 
 	if err := monitor.Run(
@@ -175,27 +239,35 @@ func TestMonitorLogsAvailableUpdate(
 		t.Fatal(err)
 	}
 
-	logOutput := output.String()
+	state, err := store.Load()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !state.UpdateAvailable {
+
+		t.Fatal(
+			"expected update available state",
+		)
+	}
+
+	if state.LatestVersion != "v0.1.2" {
+
+		t.Fatalf(
+			"unexpected latest version: %s",
+			state.LatestVersion,
+		)
+	}
 
 	if !strings.Contains(
-		logOutput,
+		output.String(),
 		"automatic update available",
 	) {
 
 		t.Fatalf(
 			"expected update available log, got %s",
-			logOutput,
-		)
-	}
-
-	if !strings.Contains(
-		logOutput,
-		"v0.1.2",
-	) {
-
-		t.Fatalf(
-			"expected latest version in log, got %s",
-			logOutput,
+			output.String(),
 		)
 	}
 }
@@ -216,6 +288,10 @@ func TestMonitorContinuesAfterCheckFailure(
 	)
 
 	var calls atomic.Int32
+
+	store := newTestStateStore(
+		t,
+	)
 
 	checker := &testReleaseChecker{
 		check: func(
@@ -251,6 +327,7 @@ func TestMonitorContinuesAfterCheckFailure(
 		"0.1.1",
 		10*time.Millisecond,
 		logger,
+		store,
 	)
 
 	if err := monitor.Run(
@@ -265,6 +342,20 @@ func TestMonitorContinuesAfterCheckFailure(
 		t.Fatalf(
 			"expected at least two checks, got %d",
 			calls.Load(),
+		)
+	}
+
+	state, err := store.Load()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if state.LastResult != UpdateResultSuccess {
+
+		t.Fatalf(
+			"expected recovered successful state, got %s",
+			state.LastResult,
 		)
 	}
 

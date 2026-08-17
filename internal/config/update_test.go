@@ -36,6 +36,13 @@ func TestDefaultUpdateConfiguration(
 			cfg.Update.CheckInterval,
 		)
 	}
+
+	if cfg.Update.StatePath != "/var/lib/sentinel/update-state.json" {
+		t.Fatalf(
+			"unexpected update state path: %s",
+			cfg.Update.StatePath,
+		)
+	}
 }
 
 func TestLoadUpdateConfiguration(
@@ -52,6 +59,7 @@ update:
   auto_check: false
   auto_install: false
   check_interval: 6h
+  state_path: /tmp/sentinel-update-state.json
 `)
 
 	if err := os.WriteFile(
@@ -100,6 +108,13 @@ update:
 		t.Fatalf(
 			"expected 6h interval, got %s",
 			cfg.Update.CheckInterval,
+		)
+	}
+
+	if cfg.Update.StatePath != "/tmp/sentinel-update-state.json" {
+		t.Fatalf(
+			"unexpected state path: %s",
+			cfg.Update.StatePath,
 		)
 	}
 }

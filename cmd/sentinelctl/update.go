@@ -30,6 +30,7 @@ func runUpdateCommand(
 		fmt.Println()
 		fmt.Println("commands:")
 		fmt.Println("  check")
+		fmt.Println("  status")
 		fmt.Println("  install")
 
 		return
@@ -41,6 +42,10 @@ func runUpdateCommand(
 
 		runUpdateCheck()
 
+	case "status":
+
+		runUpdateStatus()
+
 	case "install":
 
 		runUpdateInstall()
@@ -50,6 +55,132 @@ func runUpdateCommand(
 		fmt.Println(
 			"unknown update command:",
 			args[0],
+		)
+	}
+}
+
+func runUpdateStatus() {
+
+	cfg, err := config.Load(
+		sentinelSystemConfig,
+	)
+
+	if err != nil {
+
+		fmt.Println(
+			"Unable to load Sentinel configuration:",
+			err,
+		)
+
+		return
+	}
+
+	fmt.Println(
+		"Kyronix Sentinel Update Status",
+	)
+
+	fmt.Println()
+
+	fmt.Println(
+		"Current:",
+		updater.NormalizeVersion(
+			version.Version,
+		),
+	)
+
+	store := updater.NewStateStore(
+		cfg.Update.StatePath,
+	)
+
+	state, err := store.Load()
+
+	if err != nil {
+
+		if os.IsNotExist(
+			err,
+		) {
+
+			fmt.Println(
+				"State: NO UPDATE STATE AVAILABLE",
+			)
+
+			fmt.Println()
+
+			fmt.Println(
+				"No automatic update check has been persisted yet.",
+			)
+
+			return
+		}
+
+		fmt.Println(
+			"State: READ FAILED",
+		)
+
+		fmt.Println(
+			"Error:",
+			err,
+		)
+
+		return
+	}
+
+	fmt.Println(
+		"Latest:",
+		state.LatestVersion,
+	)
+
+	if state.UpdateAvailable {
+
+		fmt.Println(
+			"Update available: yes",
+		)
+
+	} else {
+
+		fmt.Println(
+			"Update available: no",
+		)
+	}
+
+	fmt.Println(
+		"Last check:",
+		state.LastCheck.UTC().Format(
+			"2006-01-02 15:04:05 UTC",
+		),
+	)
+
+	fmt.Println(
+		"Next check:",
+		state.NextCheck.UTC().Format(
+			"2006-01-02 15:04:05 UTC",
+		),
+	)
+
+	switch state.LastResult {
+
+	case updater.UpdateResultSuccess:
+
+		fmt.Println(
+			"Last result: SUCCESS",
+		)
+
+	case updater.UpdateResultError:
+
+		fmt.Println(
+			"Last result: ERROR",
+		)
+
+		fmt.Println(
+			"Last error:",
+			state.LastError,
+		)
+
+	default:
+
+		fmt.Println(
+			"Last result:",
+			state.LastResult,
 		)
 	}
 }
