@@ -1,4 +1,4 @@
-# Kyronix Sentinel v0.1.1
+# Kyronix Sentinel v0.1.2
 
 <p align="center">
   <strong>Predictive Linux host health monitoring, degradation detection and safe recovery intelligence.</strong>
@@ -334,7 +334,11 @@ sentinelctl status
 sentinelctl diagnose
 sentinelctl prediction
 sentinelctl update check
+sentinelctl update status
+sentinelctl update policy
+sentinelctl update quarantine
 sudo sentinelctl update install
+sudo sentinelctl update quarantine clear
 ```
 
 ---
@@ -389,6 +393,10 @@ update:
   auto_check: true
   auto_install: false
   check_interval: 24h
+  state_path: /var/lib/sentinel/update-state.json
+  auto_install_policy:
+    min_release_age: 24h
+    patch_only: true
 ```
 
 Automatic update installation remains disabled by default.
@@ -497,11 +505,11 @@ The manifest defines:
 Example assets:
 
 ```text
-sentinel-v0.1.1-linux-arm64.tar.gz
-sentinel-v0.1.1-linux-arm64.tar.gz.sha256
+sentinel-v0.1.2-linux-arm64.tar.gz
+sentinel-v0.1.2-linux-arm64.tar.gz.sha256
 
-sentinel-v0.1.1-linux-amd64.tar.gz
-sentinel-v0.1.1-linux-amd64.tar.gz.sha256
+sentinel-v0.1.2-linux-amd64.tar.gz
+sentinel-v0.1.2-linux-amd64.tar.gz.sha256
 ```
 
 Unsafe archive contents are rejected, including:
@@ -525,9 +533,9 @@ Before replacing the running Sentinel binaries, the updater keeps the previous v
 
 If activation or the post-install health check fails, the updater contains logic to restore the previous binaries and restart Sentinel.
 
-The basic rollback infrastructure is implemented.
+Rollback infrastructure is implemented and has been validated with controlled activation failures.
 
-> Real-world controlled failure and rollback validation is still part of the development roadmap.
+Failed releases that require a verified rollback are automatically quarantined to prevent repeated installation attempts until an operator explicitly clears the quarantine.
 
 ---
 
@@ -642,13 +650,13 @@ Sentinel includes its own release builder.
 Example:
 
 ```bash
-./scripts/build-release.sh 0.1.1
+./scripts/build-release.sh 0.1.2
 ```
 
 Generated artifacts are stored under:
 
 ```text
-dist/v0.1.1/
+dist/v0.1.2/
 ```
 
 The release builder automatically:
@@ -764,13 +772,21 @@ Instead, it provides lightweight **local host intelligence** focused specificall
 - [x] Post-install health verification
 - [x] Rollback infrastructure
 - [x] First successful end-to-end self-update
+- [x] Periodic automatic update checks
+- [x] Persistent update state
+- [x] Persistent install lifecycle audit
+- [x] Verified rollback tracking
+- [x] Failed-release quarantine
+- [x] Multi-release quarantine registry
+- [x] `sentinelctl update status`
+- [x] `sentinelctl update policy`
+- [x] Automatic install policy engine
+- [x] Observe-only automatic install policy evaluation
 
 ### Next
 
 - [x] Controlled real-world rollback test
-- [ ] Periodic automatic update checks
-- [ ] Persistent update state
-- [ ] Controlled automatic update policy
+- [ ] Unattended update executor
 - [ ] Recovery safety gates
 - [ ] Automatic recovery execution
 - [ ] Predictive reboot policy
