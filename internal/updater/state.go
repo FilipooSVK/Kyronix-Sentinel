@@ -19,6 +19,8 @@ const (
 	InstallResultInProgress = "in_progress"
 	InstallResultSuccess    = "success"
 	InstallResultFailed     = "failed"
+
+	QuarantineReasonActivationFailure = "activation_failure"
 )
 
 // UpdateState represents persistent Sentinel update state.
@@ -54,6 +56,18 @@ type UpdateState struct {
 	LastRollbackVerified bool `json:"last_rollback_verified,omitempty"`
 
 	RecoveredVersion string `json:"recovered_version,omitempty"`
+
+	QuarantinedVersion string `json:"quarantined_version,omitempty"`
+
+	QuarantinedVersions []string `json:"quarantined_versions,omitempty"`
+
+	QuarantinedAt *time.Time `json:"quarantined_at,omitempty"`
+
+	QuarantineReason string `json:"quarantine_reason,omitempty"`
+
+	QuarantineFailureCount uint64 `json:"quarantine_failure_count,omitempty"`
+
+	QuarantineLastError string `json:"quarantine_last_error,omitempty"`
 }
 
 // StateStore persists Sentinel update state.
@@ -361,6 +375,44 @@ func (s *StateStore) RecordInstallFailure(
 					state.LastInstallFromVersion
 			}
 
+			if rolledBack {
+
+				target :=
+					NormalizeVersion(
+						state.LastInstallTarget,
+					)
+
+				appendQuarantinedVersion(
+					state,
+					target,
+				)
+
+				if state.QuarantinedVersion ==
+					target {
+
+					state.QuarantineFailureCount++
+
+				} else {
+
+					state.QuarantinedVersion =
+						target
+
+					state.QuarantineFailureCount = 1
+				}
+
+				quarantinedAt :=
+					time.Now().UTC()
+
+				state.QuarantinedAt =
+					&quarantinedAt
+
+				state.QuarantineReason =
+					QuarantineReasonActivationFailure
+
+				state.QuarantineLastError =
+					installError
+			}
+
 			return nil
 		},
 	)
@@ -649,7 +701,14 @@ func validateUpdateState(
 		return err
 	}
 
-	return validateInstallState(
+	if err := validateInstallState(
+		state,
+	); err != nil {
+
+		return err
+	}
+
+	return validateQuarantineState(
 		state,
 	)
 }
@@ -937,4 +996,254 @@ func copyInstallLifecycle(
 
 	destination.RecoveredVersion =
 		source.RecoveredVersion
+
+	destination.QuarantinedVersion =
+		source.QuarantinedVersion
+
+	destination.QuarantinedVersions =
+		append(
+			[]string(nil),
+			source.QuarantinedVersions...,
+		)
+
+	destination.QuarantinedAt =
+		source.QuarantinedAt
+
+	destination.QuarantineReason =
+		source.QuarantineReason
+
+	destination.QuarantineFailureCount =
+		source.QuarantineFailureCount
+
+	destination.QuarantineLastError =
+		source.QuarantineLastError
+}
+
+func validateQuarantineState(
+	state UpdateState,
+) error {
+
+	if state.QuarantinedVersion == "" {
+
+		if len(state.QuarantinedVersions) != 0 ||
+			state.QuarantinedAt != nil ||
+			state.QuarantineReason != "" ||
+			state.QuarantineFailureCount != 0 ||
+			state.QuarantineLastError != "" {
+
+			return fmt.Errorf(
+				"quarantine metadata exists without quarantined version",
+			)
+		}
+
+		return nil
+	}
+
+	if !IsValidVersion(
+		state.QuarantinedVersion,
+	) {
+
+		return fmt.Errorf(
+			"invalid quarantined version: %s",
+			state.QuarantinedVersion,
+		)
+	}
+
+	if len(state.QuarantinedVersions) == 0 {
+
+		return fmt.Errorf(
+			"quarantine registry is empty",
+		)
+	}
+
+	seen := make(
+		map[string]struct{},
+		len(state.QuarantinedVersions),
+	)
+
+	currentFound := false
+
+	for _, version := range state.QuarantinedVersions {
+
+		if !IsValidVersion(
+			version,
+		) {
+
+			return fmt.Errorf(
+				"invalid version in quarantine registry: %s",
+				version,
+			)
+		}
+
+		normalized :=
+			NormalizeVersion(
+				version,
+			)
+
+		if _, exists := seen[normalized]; exists {
+
+			return fmt.Errorf(
+				"duplicate version in quarantine registry: %s",
+				normalized,
+			)
+		}
+
+		seen[normalized] =
+			struct{}{}
+
+		if normalized ==
+			NormalizeVersion(
+				state.QuarantinedVersion,
+			) {
+
+			currentFound = true
+		}
+	}
+
+	if !currentFound {
+
+		return fmt.Errorf(
+			"current quarantined version is missing from registry",
+		)
+	}
+
+	if state.QuarantinedAt == nil ||
+		state.QuarantinedAt.IsZero() {
+
+		return fmt.Errorf(
+			"quarantined release has no quarantine time",
+		)
+	}
+
+	if state.QuarantineFailureCount == 0 {
+
+		return fmt.Errorf(
+			"quarantined release has zero failure count",
+		)
+	}
+
+	switch state.QuarantineReason {
+
+	case QuarantineReasonActivationFailure:
+
+	default:
+
+		return fmt.Errorf(
+			"invalid quarantine reason: %s",
+			state.QuarantineReason,
+		)
+	}
+
+	if strings.TrimSpace(
+		state.QuarantineLastError,
+	) == "" {
+
+		return fmt.Errorf(
+			"quarantined release has no recorded error",
+		)
+	}
+
+	return nil
+}
+
+func appendQuarantinedVersion(
+	state *UpdateState,
+	version string,
+) {
+
+	normalized :=
+		NormalizeVersion(
+			version,
+		)
+
+	for _, existing := range state.QuarantinedVersions {
+
+		if NormalizeVersion(
+			existing,
+		) == normalized {
+
+			return
+		}
+	}
+
+	state.QuarantinedVersions =
+		append(
+			state.QuarantinedVersions,
+			normalized,
+		)
+}
+
+// IsVersionQuarantined reports whether a release version is
+// currently blocked by the persistent update quarantine.
+func (s *StateStore) IsVersionQuarantined(
+	version string,
+) (
+	bool,
+	error,
+) {
+
+	if err := s.validatePath(); err != nil {
+		return false, err
+	}
+
+	if !IsValidVersion(
+		version,
+	) {
+
+		return false, fmt.Errorf(
+			"invalid quarantine lookup version: %s",
+			version,
+		)
+	}
+
+	state, err := s.Load()
+
+	if err != nil {
+		return false, err
+	}
+
+	target :=
+		NormalizeVersion(
+			version,
+		)
+
+	for _, quarantined := range state.QuarantinedVersions {
+
+		if NormalizeVersion(
+			quarantined,
+		) == target {
+
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// ClearQuarantine removes the current failed-release quarantine.
+// Installation lifecycle history remains untouched.
+func (s *StateStore) ClearQuarantine() error {
+
+	if err := s.validatePath(); err != nil {
+		return err
+	}
+
+	return s.updateExisting(
+		func(state *UpdateState) error {
+
+			state.QuarantinedVersion = ""
+
+			state.QuarantinedVersions = nil
+
+			state.QuarantinedAt = nil
+
+			state.QuarantineReason = ""
+
+			state.QuarantineFailureCount = 0
+
+			state.QuarantineLastError = ""
+
+			return nil
+		},
+	)
 }

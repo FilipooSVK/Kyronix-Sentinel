@@ -32,6 +32,7 @@ func runUpdateCommand(
 		fmt.Println("  check")
 		fmt.Println("  status")
 		fmt.Println("  install")
+		fmt.Println("  quarantine [clear]")
 
 		return
 	}
@@ -49,6 +50,12 @@ func runUpdateCommand(
 	case "install":
 
 		runUpdateInstall()
+
+	case "quarantine":
+
+		runUpdateQuarantine(
+			args[1:],
+		)
 
 	default:
 
@@ -195,6 +202,10 @@ func runUpdateStatus() {
 			"  Last attempt: none",
 		)
 
+		printUpdateQuarantineSummary(
+			state,
+		)
+
 		return
 	}
 
@@ -279,6 +290,10 @@ func runUpdateStatus() {
 			state.LastInstallResult,
 		)
 	}
+
+	printUpdateQuarantineSummary(
+		state,
+	)
 }
 
 func runUpdateCheck() {
@@ -508,6 +523,74 @@ func runUpdateInstall() {
 
 		fmt.Println(
 			"Status: UP TO DATE",
+		)
+
+		return
+	}
+
+	quarantined, err :=
+		stateStore.IsVersionQuarantined(
+			check.LatestVersion,
+		)
+
+	if err != nil {
+
+		fmt.Println(
+			"Status: UPDATE STATE ERROR",
+		)
+
+		fmt.Println(
+			"Error:",
+			err,
+		)
+
+		return
+	}
+
+	if quarantined {
+
+		state, err :=
+			stateStore.Load()
+
+		if err != nil {
+
+			fmt.Println(
+				"Status: UPDATE STATE ERROR",
+			)
+
+			fmt.Println(
+				"Error:",
+				err,
+			)
+
+			return
+		}
+
+		fmt.Println(
+			"Status: RELEASE QUARANTINED",
+		)
+
+		fmt.Println(
+			"Version:",
+			check.LatestVersion,
+		)
+
+		fmt.Println(
+			"Failures:",
+			state.QuarantineFailureCount,
+		)
+
+		fmt.Println()
+		fmt.Println(
+			"Installation refused.",
+		)
+
+		fmt.Println(
+			"To explicitly clear quarantine:",
+		)
+
+		fmt.Println(
+			"sudo sentinelctl update quarantine clear",
 		)
 
 		return
