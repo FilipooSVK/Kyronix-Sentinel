@@ -383,3 +383,164 @@ func TestMonitorContinuesAfterCheckFailure(
 		)
 	}
 }
+
+func TestMonitorEvaluatesAllowedPolicyInObserveOnlyMode(
+	t *testing.T,
+) {
+
+	var output bytes.Buffer
+
+	logger := logging.New(
+		&output,
+		"info",
+	)
+
+	ctx, cancel :=
+		context.WithCancel(
+			context.Background(),
+		)
+
+	store := newTestStateStore(
+		t,
+	)
+
+	checker := &testReleaseChecker{
+		check: func(
+			ctx context.Context,
+			currentVersion string,
+		) (CheckResult, error) {
+
+			cancel()
+
+			return CheckResult{
+				CurrentVersion: "v0.1.1",
+
+				LatestVersion: "v0.1.2",
+
+				UpdateAvailable: true,
+
+				Release: Release{
+					TagName: "v0.1.2",
+
+					PublishedAt: time.Now().
+						UTC().
+						Add(
+							-48 *
+								time.Hour,
+						),
+				},
+			}, nil
+		},
+	}
+
+	monitor := NewMonitor(
+		checker,
+		"0.1.1",
+		time.Hour,
+		logger,
+		store,
+	)
+
+	monitor.SetAutoInstallPolicy(
+		AutoInstallPolicy{
+			Enabled: true,
+
+			MinReleaseAge: 24 * time.Hour,
+
+			PatchOnly: true,
+		},
+	)
+
+	if err := monitor.Run(
+		ctx,
+	); err != nil {
+
+		t.Fatal(err)
+	}
+
+	logOutput := output.String()
+
+	if !strings.Contains(
+		logOutput,
+		"automatic update policy evaluated",
+	) {
+
+		t.Fatalf(
+			"expected policy evaluation log, got %s",
+			logOutput,
+		)
+	}
+
+	if !strings.Contains(
+		logOutput,
+		`"decision":"allow"`,
+	) {
+
+		t.Fatalf(
+			"expected allow decision, got %s",
+			logOutput,
+		)
+	}
+
+	if !strings.Contains(
+		logOutput,
+		`"mode":"observe_only"`,
+	) {
+
+		t.Fatalf(
+			"expected observe-only mode, got %s",
+			logOutput,
+		)
+	}
+}
+
+func TestMonitorRejectsNegativeAutoInstallReleaseAge(
+	t *testing.T,
+) {
+
+	var output bytes.Buffer
+
+	logger := logging.New(
+		&output,
+		"info",
+	)
+
+	checker := &testReleaseChecker{
+		check: func(
+			ctx context.Context,
+			currentVersion string,
+		) (CheckResult, error) {
+
+			return CheckResult{}, nil
+		},
+	}
+
+	monitor := NewMonitor(
+		checker,
+		"0.1.1",
+		time.Hour,
+		logger,
+		newTestStateStore(t),
+	)
+
+	monitor.SetAutoInstallPolicy(
+		AutoInstallPolicy{
+			Enabled: true,
+
+			MinReleaseAge: -time.Hour,
+
+			PatchOnly: true,
+		},
+	)
+
+	err := monitor.Run(
+		context.Background(),
+	)
+
+	if err == nil {
+
+		t.Fatal(
+			"expected invalid policy error",
+		)
+	}
+}

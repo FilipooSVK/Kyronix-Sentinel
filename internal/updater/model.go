@@ -1,5 +1,7 @@
 package updater
 
+import "time"
+
 // Asset represents one downloadable GitHub release asset.
 type Asset struct {
 	Name string `json:"name"`
@@ -18,6 +20,8 @@ type Release struct {
 	Draft bool `json:"draft"`
 
 	Prerelease bool `json:"prerelease"`
+
+	PublishedAt time.Time `json:"published_at"`
 
 	Assets []Asset `json:"assets"`
 }

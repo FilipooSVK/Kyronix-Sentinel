@@ -27,6 +27,8 @@ type Monitor struct {
 	logger *logging.Logger
 
 	stateStore *StateStore
+
+	autoInstallPolicy AutoInstallPolicy
 }
 
 // NewMonitor creates a periodic Sentinel update monitor.
@@ -49,6 +51,21 @@ func NewMonitor(
 
 		stateStore: stateStore,
 	}
+}
+
+// SetAutoInstallPolicy configures unattended-install eligibility.
+//
+// The monitor currently evaluates this policy in observe-only mode.
+// It does not download or install releases.
+func (m *Monitor) SetAutoInstallPolicy(
+	policy AutoInstallPolicy,
+) {
+
+	if m == nil {
+		return
+	}
+
+	m.autoInstallPolicy = policy
 }
 
 // Run starts the periodic update check loop.
@@ -96,6 +113,13 @@ func (m *Monitor) Run(
 
 		return fmt.Errorf(
 			"update check interval must be greater than zero",
+		)
+	}
+
+	if m.autoInstallPolicy.MinReleaseAge < 0 {
+
+		return fmt.Errorf(
+			"automatic install minimum release age cannot be negative",
 		)
 	}
 
@@ -219,6 +243,11 @@ func (m *Monitor) checkOnce(
 			},
 		)
 
+		m.evaluateAutoInstallPolicy(
+			result,
+			checkedAt,
+		)
+
 		return
 	}
 
@@ -248,4 +277,89 @@ func (m *Monitor) persistState(
 			},
 		)
 	}
+}
+
+func (m *Monitor) evaluateAutoInstallPolicy(
+	result CheckResult,
+	now time.Time,
+) {
+
+	state, err := m.stateStore.Load()
+
+	if err != nil {
+
+		m.logger.Error(
+			"automatic update policy evaluation failed",
+			map[string]interface{}{
+				"current_version": result.CurrentVersion,
+				"latest_version":  result.LatestVersion,
+				"mode":            "observe_only",
+				"error":           err.Error(),
+			},
+		)
+
+		return
+	}
+
+	decision, err :=
+		EvaluateAutoInstallPolicy(
+			m.autoInstallPolicy,
+			AutoInstallPolicyInput{
+				Check: result,
+
+				State: state,
+
+				Now: now.UTC(),
+			},
+		)
+
+	if err != nil {
+
+		m.logger.Error(
+			"automatic update policy evaluation failed",
+			map[string]interface{}{
+				"current_version": result.CurrentVersion,
+				"latest_version":  result.LatestVersion,
+				"mode":            "observe_only",
+				"error":           err.Error(),
+			},
+		)
+
+		return
+	}
+
+	decisionName := "deny"
+
+	if decision.Allowed {
+		decisionName = "allow"
+	}
+
+	fields := map[string]interface{}{
+		"current_version": result.CurrentVersion,
+
+		"latest_version": result.LatestVersion,
+
+		"decision": decisionName,
+
+		"reasons": decision.Reasons,
+
+		"mode": "observe_only",
+
+		"auto_install": m.autoInstallPolicy.Enabled,
+
+		"patch_only": m.autoInstallPolicy.PatchOnly,
+
+		"min_release_age": m.autoInstallPolicy.MinReleaseAge.String(),
+	}
+
+	if decision.ReleaseAge > 0 {
+
+		fields["release_age"] =
+			decision.ReleaseAge.String()
+	}
+
+	m.logger.Info(
+		"automatic update policy evaluated",
+		fields,
+	)
 }

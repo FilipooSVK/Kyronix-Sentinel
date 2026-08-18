@@ -168,12 +168,24 @@ func startAutomaticUpdateChecker(
 		return
 	}
 
-	if cfg.Update.AutoInstall {
+	if cfg.Update.AutoInstallPolicy.MinReleaseAge < 0 {
 
 		logger.Error(
-			"automatic update installation is not enabled in this release",
+			"automatic update checker not started",
 			map[string]interface{}{
-				"action": "updates will remain check-only",
+				"error": "automatic install minimum release age cannot be negative",
+			},
+		)
+
+		return
+	}
+
+	if cfg.Update.AutoInstall {
+
+		logger.Info(
+			"automatic update installation policy enabled in observe-only mode",
+			map[string]interface{}{
+				"action": "policy decisions will be logged but releases will not be installed",
 			},
 		)
 	}
@@ -195,6 +207,16 @@ func startAutomaticUpdateChecker(
 		stateStore,
 	)
 
+	monitor.SetAutoInstallPolicy(
+		updater.AutoInstallPolicy{
+			Enabled: cfg.Update.AutoInstall,
+
+			MinReleaseAge: cfg.Update.AutoInstallPolicy.MinReleaseAge,
+
+			PatchOnly: cfg.Update.AutoInstallPolicy.PatchOnly,
+		},
+	)
+
 	logger.Info(
 		"automatic update checker started",
 		map[string]interface{}{
@@ -202,7 +224,14 @@ func startAutomaticUpdateChecker(
 			"repository":     cfg.Update.Repository,
 			"check_interval": cfg.Update.CheckInterval.String(),
 			"state_path":     cfg.Update.StatePath,
-			"auto_install":   false,
+
+			"auto_install": cfg.Update.AutoInstall,
+
+			"policy_mode": "observe_only",
+
+			"min_release_age": cfg.Update.AutoInstallPolicy.MinReleaseAge.String(),
+
+			"patch_only": cfg.Update.AutoInstallPolicy.PatchOnly,
 		},
 	)
 

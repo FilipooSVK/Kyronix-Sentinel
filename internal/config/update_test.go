@@ -30,6 +30,22 @@ func TestDefaultUpdateConfiguration(
 		)
 	}
 
+	if cfg.Update.AutoInstallPolicy.MinReleaseAge !=
+		24*time.Hour {
+
+		t.Fatalf(
+			"expected 24h minimum release age, got %s",
+			cfg.Update.AutoInstallPolicy.MinReleaseAge,
+		)
+	}
+
+	if !cfg.Update.AutoInstallPolicy.PatchOnly {
+
+		t.Fatal(
+			"automatic installation must default to patch-only",
+		)
+	}
+
 	if cfg.Update.CheckInterval != 24*time.Hour {
 		t.Fatalf(
 			"expected 24h check interval, got %s",
@@ -58,6 +74,9 @@ update:
   repository: sentinel
   auto_check: false
   auto_install: false
+  auto_install_policy:
+    min_release_age: 12h
+    patch_only: false
   check_interval: 6h
   state_path: /tmp/sentinel-update-state.json
 `)
@@ -101,6 +120,22 @@ update:
 	if cfg.Update.AutoInstall {
 		t.Fatal(
 			"expected auto_install false",
+		)
+	}
+
+	if cfg.Update.AutoInstallPolicy.MinReleaseAge !=
+		12*time.Hour {
+
+		t.Fatalf(
+			"expected 12h minimum release age, got %s",
+			cfg.Update.AutoInstallPolicy.MinReleaseAge,
+		)
+	}
+
+	if cfg.Update.AutoInstallPolicy.PatchOnly {
+
+		t.Fatal(
+			"expected patch_only false",
 		)
 	}
 

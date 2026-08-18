@@ -32,6 +32,7 @@ func runUpdateCommand(
 		fmt.Println("  check")
 		fmt.Println("  status")
 		fmt.Println("  install")
+		fmt.Println("  policy")
 		fmt.Println("  quarantine [clear]")
 
 		return
@@ -50,6 +51,10 @@ func runUpdateCommand(
 	case "install":
 
 		runUpdateInstall()
+
+	case "policy":
+
+		runUpdatePolicy()
 
 	case "quarantine":
 

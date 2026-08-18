@@ -44,9 +44,18 @@ type UpdateConfig struct {
 
 	AutoInstall bool `yaml:"auto_install"`
 
+	AutoInstallPolicy AutoInstallPolicyConfig `yaml:"auto_install_policy"`
+
 	CheckInterval time.Duration `yaml:"check_interval"`
 
 	StatePath string `yaml:"state_path"`
+}
+
+// AutoInstallPolicyConfig controls unattended update eligibility.
+type AutoInstallPolicyConfig struct {
+	MinReleaseAge time.Duration `yaml:"min_release_age"`
+
+	PatchOnly bool `yaml:"patch_only"`
 }
 
 // Default returns default Sentinel configuration.
@@ -68,11 +77,17 @@ func Default() Config {
 		},
 
 		Update: UpdateConfig{
-			Enabled:       true,
-			Owner:         "",
-			Repository:    "",
-			AutoCheck:     true,
-			AutoInstall:   false,
+			Enabled:     true,
+			Owner:       "",
+			Repository:  "",
+			AutoCheck:   true,
+			AutoInstall: false,
+
+			AutoInstallPolicy: AutoInstallPolicyConfig{
+				MinReleaseAge: 24 * time.Hour,
+				PatchOnly:     true,
+			},
+
 			CheckInterval: 24 * time.Hour,
 			StatePath:     "/var/lib/sentinel/update-state.json",
 		},
