@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -469,6 +470,55 @@ func runUpdateInstall() {
 
 		return
 	}
+
+	operationLock := updater.NewOperationLock(
+		updater.OperationLockPath(
+			cfg.Update.StatePath,
+		),
+	)
+
+	if err := operationLock.Acquire(); err != nil {
+
+		if errors.Is(
+			err,
+			updater.ErrUpdateOperationLocked,
+		) {
+
+			fmt.Println(
+				"Status: UPDATE ALREADY IN PROGRESS",
+			)
+
+			fmt.Println()
+			fmt.Println(
+				"Another Sentinel update operation currently holds the global update lock.",
+			)
+
+			return
+		}
+
+		fmt.Println(
+			"Status: UPDATE LOCK ERROR",
+		)
+
+		fmt.Println(
+			"Error:",
+			err,
+		)
+
+		return
+	}
+
+	defer func() {
+
+		if err := operationLock.Release(); err != nil {
+
+			fmt.Println()
+			fmt.Println(
+				"Warning: failed to release update operation lock:",
+				err,
+			)
+		}
+	}()
 
 	fmt.Println(
 		"Checking GitHub release...",
