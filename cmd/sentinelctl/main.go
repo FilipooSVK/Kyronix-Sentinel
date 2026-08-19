@@ -35,8 +35,10 @@ func main() {
 
 	case "update":
 
-		runUpdateCommand(
-			os.Args[2:],
+		os.Exit(
+			runUpdateCommand(
+				os.Args[2:],
+			),
 		)
 
 	case "diagnose":

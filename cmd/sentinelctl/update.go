@@ -21,7 +21,7 @@ const (
 
 func runUpdateCommand(
 	args []string,
-) {
+) int {
 
 	if len(args) == 0 {
 
@@ -34,7 +34,7 @@ func runUpdateCommand(
 		fmt.Println("  policy")
 		fmt.Println("  quarantine [clear]")
 
-		return
+		return updateExitUsage
 	}
 
 	switch args[0] {
@@ -43,17 +43,23 @@ func runUpdateCommand(
 
 		runUpdateCheck()
 
+		return updateExitSuccess
+
 	case "status":
 
 		runUpdateStatus()
 
+		return updateExitSuccess
+
 	case "install":
 
-		runUpdateInstall()
+		return runUpdateInstall()
 
 	case "policy":
 
 		runUpdatePolicy()
+
+		return updateExitSuccess
 
 	case "quarantine":
 
@@ -61,12 +67,16 @@ func runUpdateCommand(
 			args[1:],
 		)
 
+		return updateExitSuccess
+
 	default:
 
 		fmt.Println(
 			"unknown update command:",
 			args[0],
 		)
+
+		return updateExitUsage
 	}
 }
 
@@ -396,7 +406,7 @@ func runUpdateCheck() {
 	)
 }
 
-func runUpdateInstall() {
+func runUpdateInstall() int {
 
 	fmt.Println(
 		"Kyronix Sentinel Update",
@@ -424,7 +434,7 @@ func runUpdateInstall() {
 			"sudo sentinelctl update install",
 		)
 
-		return
+		return updateExitPrecondition
 	}
 
 	cfg, err := config.Load(
@@ -442,7 +452,7 @@ func runUpdateInstall() {
 			err,
 		)
 
-		return
+		return updateExitPrecondition
 	}
 
 	if !cfg.Update.Enabled {
@@ -451,7 +461,7 @@ func runUpdateInstall() {
 			"Status: UPDATE SYSTEM DISABLED",
 		)
 
-		return
+		return updateExitPrecondition
 	}
 
 	if !updateRepositoryConfigured(
@@ -469,7 +479,7 @@ func runUpdateInstall() {
 			sentinelSystemConfig,
 		)
 
-		return
+		return updateExitPrecondition
 	}
 
 	client := updater.NewGitHubClient(
@@ -516,7 +526,10 @@ func runUpdateInstall() {
 			result,
 		)
 
-		return
+		return updateInstallExitCode(
+			result,
+			err,
+		)
 	}
 
 	if result.UpToDate {
@@ -529,7 +542,10 @@ func runUpdateInstall() {
 			result,
 		)
 
-		return
+		return updateInstallExitCode(
+			result,
+			nil,
+		)
 	}
 
 	fmt.Println()
@@ -555,6 +571,11 @@ func runUpdateInstall() {
 
 	printUpdateExecutorWarnings(
 		result,
+	)
+
+	return updateInstallExitCode(
+		result,
+		nil,
 	)
 }
 
