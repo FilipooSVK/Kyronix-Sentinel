@@ -29,6 +29,10 @@ type Monitor struct {
 	stateStore *StateStore
 
 	autoInstallPolicy AutoInstallPolicy
+
+	autoInstallMode AutoInstallExecutionMode
+
+	updateWorker UpdateWorker
 }
 
 // NewMonitor creates a periodic Sentinel update monitor.
@@ -50,6 +54,8 @@ func NewMonitor(
 		logger: logger,
 
 		stateStore: stateStore,
+
+		autoInstallMode: AutoInstallExecutionObserveOnly,
 	}
 }
 
@@ -120,6 +126,23 @@ func (m *Monitor) Run(
 
 		return fmt.Errorf(
 			"automatic install minimum release age cannot be negative",
+		)
+	}
+
+	if !m.autoInstallMode.Valid() {
+
+		return fmt.Errorf(
+			"invalid automatic install execution mode: %q",
+			m.autoInstallMode,
+		)
+	}
+
+	if m.autoInstallMode ==
+		AutoInstallExecutionWorkerEnabled &&
+		m.updateWorker == nil {
+
+		return fmt.Errorf(
+			"automatic install worker is nil",
 		)
 	}
 
@@ -244,6 +267,7 @@ func (m *Monitor) checkOnce(
 		)
 
 		m.evaluateAutoInstallPolicy(
+			ctx,
 			result,
 			checkedAt,
 		)
@@ -280,6 +304,7 @@ func (m *Monitor) persistState(
 }
 
 func (m *Monitor) evaluateAutoInstallPolicy(
+	ctx context.Context,
 	result CheckResult,
 	now time.Time,
 ) {
@@ -293,7 +318,7 @@ func (m *Monitor) evaluateAutoInstallPolicy(
 			map[string]interface{}{
 				"current_version": result.CurrentVersion,
 				"latest_version":  result.LatestVersion,
-				"mode":            "observe_only",
+				"mode":            string(m.autoInstallMode),
 				"error":           err.Error(),
 			},
 		)
@@ -320,7 +345,7 @@ func (m *Monitor) evaluateAutoInstallPolicy(
 			map[string]interface{}{
 				"current_version": result.CurrentVersion,
 				"latest_version":  result.LatestVersion,
-				"mode":            "observe_only",
+				"mode":            string(m.autoInstallMode),
 				"error":           err.Error(),
 			},
 		)
@@ -343,7 +368,7 @@ func (m *Monitor) evaluateAutoInstallPolicy(
 
 		"reasons": decision.Reasons,
 
-		"mode": "observe_only",
+		"mode": string(m.autoInstallMode),
 
 		"auto_install": m.autoInstallPolicy.Enabled,
 
@@ -361,5 +386,70 @@ func (m *Monitor) evaluateAutoInstallPolicy(
 	m.logger.Info(
 		"automatic update policy evaluated",
 		fields,
+	)
+
+	if !decision.Allowed {
+
+		return
+	}
+
+	if m.autoInstallMode !=
+		AutoInstallExecutionWorkerEnabled {
+
+		return
+	}
+
+	if ctx.Err() != nil {
+
+		return
+	}
+
+	if m.updateWorker == nil {
+
+		m.logger.Error(
+			"automatic update worker start failed",
+			map[string]interface{}{
+				"current_version": result.CurrentVersion,
+
+				"latest_version": result.LatestVersion,
+
+				"mode": string(m.autoInstallMode),
+
+				"error": "automatic install worker is nil",
+			},
+		)
+
+		return
+	}
+
+	if err := m.updateWorker.Start(
+		ctx,
+	); err != nil {
+
+		m.logger.Error(
+			"automatic update worker start failed",
+			map[string]interface{}{
+				"current_version": result.CurrentVersion,
+
+				"latest_version": result.LatestVersion,
+
+				"mode": string(m.autoInstallMode),
+
+				"error": err.Error(),
+			},
+		)
+
+		return
+	}
+
+	m.logger.Info(
+		"automatic update worker start requested",
+		map[string]interface{}{
+			"current_version": result.CurrentVersion,
+
+			"latest_version": result.LatestVersion,
+
+			"mode": string(m.autoInstallMode),
+		},
 	)
 }

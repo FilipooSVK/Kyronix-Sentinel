@@ -544,3 +544,361 @@ func TestMonitorRejectsNegativeAutoInstallReleaseAge(
 		)
 	}
 }
+
+type testUpdateWorker struct {
+	starts atomic.Int32
+
+	err error
+}
+
+func (w *testUpdateWorker) Start(
+	ctx context.Context,
+) error {
+
+	w.starts.Add(
+		1,
+	)
+
+	return w.err
+}
+
+func allowedAutoInstallCheckResult() CheckResult {
+
+	return CheckResult{
+		CurrentVersion: "v0.1.1",
+
+		LatestVersion: "v0.1.2",
+
+		UpdateAvailable: true,
+
+		Release: Release{
+			TagName: "v0.1.2",
+
+			PublishedAt: time.Now().
+				UTC().
+				Add(
+					-48 * time.Hour,
+				),
+		},
+	}
+}
+
+func newAutoInstallExecutionMonitor(
+	t *testing.T,
+	output *bytes.Buffer,
+	policy AutoInstallPolicy,
+) *Monitor {
+
+	t.Helper()
+
+	logger := logging.New(
+		output,
+		"info",
+	)
+
+	checker := &testReleaseChecker{
+		check: func(
+			ctx context.Context,
+			currentVersion string,
+		) (CheckResult, error) {
+
+			return allowedAutoInstallCheckResult(),
+				nil
+		},
+	}
+
+	monitor := NewMonitor(
+		checker,
+		"0.1.1",
+		time.Hour,
+		logger,
+		newTestStateStore(t),
+	)
+
+	monitor.SetAutoInstallPolicy(
+		policy,
+	)
+
+	return monitor
+}
+
+func TestMonitorObserveOnlyNeverStartsWorker(
+	t *testing.T,
+) {
+
+	var output bytes.Buffer
+
+	monitor :=
+		newAutoInstallExecutionMonitor(
+			t,
+			&output,
+			AutoInstallPolicy{
+				Enabled: true,
+
+				MinReleaseAge: 24 * time.Hour,
+
+				PatchOnly: true,
+			},
+		)
+
+	worker := &testUpdateWorker{}
+
+	if err := monitor.SetAutoInstallExecution(
+		AutoInstallExecutionObserveOnly,
+		worker,
+	); err != nil {
+
+		t.Fatal(err)
+	}
+
+	monitor.checkOnce(
+		context.Background(),
+	)
+
+	if worker.starts.Load() != 0 {
+
+		t.Fatalf(
+			"observe-only mode unexpectedly started worker %d time(s)",
+			worker.starts.Load(),
+		)
+	}
+
+	if !strings.Contains(
+		output.String(),
+		`"mode":"observe_only"`,
+	) {
+
+		t.Fatalf(
+			"expected observe-only log, got %s",
+			output.String(),
+		)
+	}
+}
+
+func TestMonitorWorkerEnabledStartsWorkerOnAllow(
+	t *testing.T,
+) {
+
+	var output bytes.Buffer
+
+	monitor :=
+		newAutoInstallExecutionMonitor(
+			t,
+			&output,
+			AutoInstallPolicy{
+				Enabled: true,
+
+				MinReleaseAge: 24 * time.Hour,
+
+				PatchOnly: true,
+			},
+		)
+
+	worker := &testUpdateWorker{}
+
+	if err := monitor.SetAutoInstallExecution(
+		AutoInstallExecutionWorkerEnabled,
+		worker,
+	); err != nil {
+
+		t.Fatal(err)
+	}
+
+	monitor.checkOnce(
+		context.Background(),
+	)
+
+	if worker.starts.Load() != 1 {
+
+		t.Fatalf(
+			"expected worker to start once, got %d",
+			worker.starts.Load(),
+		)
+	}
+
+	if !strings.Contains(
+		output.String(),
+		"automatic update worker start requested",
+	) {
+
+		t.Fatalf(
+			"expected worker start log, got %s",
+			output.String(),
+		)
+	}
+
+	if !strings.Contains(
+		output.String(),
+		`"mode":"worker_enabled"`,
+	) {
+
+		t.Fatalf(
+			"expected worker-enabled mode log, got %s",
+			output.String(),
+		)
+	}
+}
+
+func TestMonitorWorkerEnabledDoesNotStartWorkerOnDeny(
+	t *testing.T,
+) {
+
+	var output bytes.Buffer
+
+	monitor :=
+		newAutoInstallExecutionMonitor(
+			t,
+			&output,
+			AutoInstallPolicy{
+				Enabled: false,
+
+				MinReleaseAge: 24 * time.Hour,
+
+				PatchOnly: true,
+			},
+		)
+
+	worker := &testUpdateWorker{}
+
+	if err := monitor.SetAutoInstallExecution(
+		AutoInstallExecutionWorkerEnabled,
+		worker,
+	); err != nil {
+
+		t.Fatal(err)
+	}
+
+	monitor.checkOnce(
+		context.Background(),
+	)
+
+	if worker.starts.Load() != 0 {
+
+		t.Fatalf(
+			"denied policy unexpectedly started worker %d time(s)",
+			worker.starts.Load(),
+		)
+	}
+
+	if !strings.Contains(
+		output.String(),
+		`"decision":"deny"`,
+	) {
+
+		t.Fatalf(
+			"expected deny decision, got %s",
+			output.String(),
+		)
+	}
+}
+
+func TestMonitorLogsWorkerStartFailure(
+	t *testing.T,
+) {
+
+	var output bytes.Buffer
+
+	monitor :=
+		newAutoInstallExecutionMonitor(
+			t,
+			&output,
+			AutoInstallPolicy{
+				Enabled: true,
+
+				MinReleaseAge: 24 * time.Hour,
+
+				PatchOnly: true,
+			},
+		)
+
+	worker := &testUpdateWorker{
+		err: errors.New(
+			"worker launch failed",
+		),
+	}
+
+	if err := monitor.SetAutoInstallExecution(
+		AutoInstallExecutionWorkerEnabled,
+		worker,
+	); err != nil {
+
+		t.Fatal(err)
+	}
+
+	monitor.checkOnce(
+		context.Background(),
+	)
+
+	if worker.starts.Load() != 1 {
+
+		t.Fatalf(
+			"expected one worker start attempt, got %d",
+			worker.starts.Load(),
+		)
+	}
+
+	if !strings.Contains(
+		output.String(),
+		"automatic update worker start failed",
+	) {
+
+		t.Fatalf(
+			"expected worker failure log, got %s",
+			output.String(),
+		)
+	}
+}
+
+func TestMonitorWorkerEnabledRequiresWorker(
+	t *testing.T,
+) {
+
+	var output bytes.Buffer
+
+	monitor :=
+		newAutoInstallExecutionMonitor(
+			t,
+			&output,
+			AutoInstallPolicy{},
+		)
+
+	err := monitor.SetAutoInstallExecution(
+		AutoInstallExecutionWorkerEnabled,
+		nil,
+	)
+
+	if err == nil {
+
+		t.Fatal(
+			"expected worker-enabled mode to require worker",
+		)
+	}
+}
+
+func TestMonitorRejectsInvalidExecutionMode(
+	t *testing.T,
+) {
+
+	var output bytes.Buffer
+
+	monitor :=
+		newAutoInstallExecutionMonitor(
+			t,
+			&output,
+			AutoInstallPolicy{},
+		)
+
+	err := monitor.SetAutoInstallExecution(
+		AutoInstallExecutionMode(
+			"invalid",
+		),
+		nil,
+	)
+
+	if err == nil {
+
+		t.Fatal(
+			"expected invalid execution mode error",
+		)
+	}
+}

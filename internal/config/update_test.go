@@ -153,3 +153,48 @@ update:
 		)
 	}
 }
+
+func TestLoadLegacyUpdateConfigurationDefaultsToObserveOnly(
+	t *testing.T,
+) {
+
+	path := t.TempDir() +
+		"/sentinel.yaml"
+
+	data := []byte(`
+update:
+  enabled: true
+  owner: FilipooSVK
+  repository: Kyronix-Sentinel
+  auto_check: true
+  auto_install: false
+  check_interval: 24h
+  state_path: /var/lib/sentinel/update-state.json
+`)
+
+	if err := os.WriteFile(
+		path,
+		data,
+		0644,
+	); err != nil {
+
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(
+		path,
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.Update.AutoInstallMode !=
+		"observe_only" {
+
+		t.Fatalf(
+			"legacy configuration must default to observe_only, got %s",
+			cfg.Update.AutoInstallMode,
+		)
+	}
+}

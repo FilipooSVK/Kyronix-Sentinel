@@ -44,6 +44,8 @@ type UpdateConfig struct {
 
 	AutoInstall bool `yaml:"auto_install"`
 
+	AutoInstallMode string `yaml:"auto_install_mode"`
+
 	AutoInstallPolicy AutoInstallPolicyConfig `yaml:"auto_install_policy"`
 
 	CheckInterval time.Duration `yaml:"check_interval"`
@@ -82,6 +84,8 @@ func Default() Config {
 			Repository:  "",
 			AutoCheck:   true,
 			AutoInstall: false,
+
+			AutoInstallMode: "observe_only",
 
 			AutoInstallPolicy: AutoInstallPolicyConfig{
 				MinReleaseAge: 24 * time.Hour,

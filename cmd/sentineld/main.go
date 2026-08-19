@@ -14,6 +14,8 @@ import (
 	"kyronix/sentinel/internal/version"
 )
 
+const sentinelUpdateServiceName = "sentinel-update.service"
+
 func main() {
 
 	configPath := flag.String(
@@ -180,16 +182,6 @@ func startAutomaticUpdateChecker(
 		return
 	}
 
-	if cfg.Update.AutoInstall {
-
-		logger.Info(
-			"automatic update installation policy enabled in observe-only mode",
-			map[string]interface{}{
-				"action": "policy decisions will be logged but releases will not be installed",
-			},
-		)
-	}
-
 	client := updater.NewGitHubClient(
 		cfg.Update.Owner,
 		cfg.Update.Repository,
@@ -217,6 +209,38 @@ func startAutomaticUpdateChecker(
 		},
 	)
 
+	executionMode := updater.AutoInstallExecutionMode(
+		cfg.Update.AutoInstallMode,
+	)
+
+	var updateWorker updater.UpdateWorker
+
+	if executionMode ==
+		updater.AutoInstallExecutionWorkerEnabled {
+
+		updateWorker =
+			updater.NewSystemdUpdateWorker(
+				sentinelUpdateServiceName,
+			)
+	}
+
+	if err := monitor.SetAutoInstallExecution(
+		executionMode,
+		updateWorker,
+	); err != nil {
+
+		logger.Error(
+			"automatic update checker not started",
+			map[string]interface{}{
+				"error": err.Error(),
+
+				"auto_install_mode": cfg.Update.AutoInstallMode,
+			},
+		)
+
+		return
+	}
+
 	logger.Info(
 		"automatic update checker started",
 		map[string]interface{}{
@@ -227,7 +251,7 @@ func startAutomaticUpdateChecker(
 
 			"auto_install": cfg.Update.AutoInstall,
 
-			"policy_mode": "observe_only",
+			"policy_mode": string(executionMode),
 
 			"min_release_age": cfg.Update.AutoInstallPolicy.MinReleaseAge.String(),
 
