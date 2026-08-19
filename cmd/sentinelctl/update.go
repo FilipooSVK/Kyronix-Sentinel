@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"kyronix/sentinel/internal/api/local"
 	"kyronix/sentinel/internal/config"
@@ -400,7 +398,10 @@ func runUpdateCheck() {
 
 func runUpdateInstall() {
 
-	fmt.Println("Kyronix Sentinel Update")
+	fmt.Println(
+		"Kyronix Sentinel Update",
+	)
+
 	fmt.Println()
 
 	fmt.Println(
@@ -471,368 +472,9 @@ func runUpdateInstall() {
 		return
 	}
 
-	operationLock := updater.NewOperationLock(
-		updater.OperationLockPath(
-			cfg.Update.StatePath,
-		),
-	)
-
-	if err := operationLock.Acquire(); err != nil {
-
-		if errors.Is(
-			err,
-			updater.ErrUpdateOperationLocked,
-		) {
-
-			fmt.Println(
-				"Status: UPDATE ALREADY IN PROGRESS",
-			)
-
-			fmt.Println()
-			fmt.Println(
-				"Another Sentinel update operation currently holds the global update lock.",
-			)
-
-			return
-		}
-
-		fmt.Println(
-			"Status: UPDATE LOCK ERROR",
-		)
-
-		fmt.Println(
-			"Error:",
-			err,
-		)
-
-		return
-	}
-
-	defer func() {
-
-		if err := operationLock.Release(); err != nil {
-
-			fmt.Println()
-			fmt.Println(
-				"Warning: failed to release update operation lock:",
-				err,
-			)
-		}
-	}()
-
-	fmt.Println(
-		"Checking GitHub release...",
-	)
-
 	client := updater.NewGitHubClient(
 		cfg.Update.Owner,
 		cfg.Update.Repository,
-	)
-
-	ctx := context.Background()
-
-	check, err := client.Check(
-		ctx,
-		version.Version,
-	)
-
-	if err != nil {
-
-		fmt.Println(
-			"Status: UPDATE CHECK FAILED",
-		)
-
-		fmt.Println(
-			"Error:",
-			err,
-		)
-
-		return
-	}
-
-	fmt.Println(
-		"Latest:",
-		check.LatestVersion,
-	)
-
-	stateStore, err := persistUpdateCheckState(
-		cfg,
-		check,
-	)
-
-	if err != nil {
-
-		fmt.Println(
-			"Status: UPDATE STATE ERROR",
-		)
-
-		fmt.Println(
-			"Error:",
-			err,
-		)
-
-		return
-	}
-
-	if !check.UpdateAvailable {
-
-		fmt.Println(
-			"Status: UP TO DATE",
-		)
-
-		return
-	}
-
-	quarantined, err :=
-		stateStore.IsVersionQuarantined(
-			check.LatestVersion,
-		)
-
-	if err != nil {
-
-		fmt.Println(
-			"Status: UPDATE STATE ERROR",
-		)
-
-		fmt.Println(
-			"Error:",
-			err,
-		)
-
-		return
-	}
-
-	if quarantined {
-
-		state, err :=
-			stateStore.Load()
-
-		if err != nil {
-
-			fmt.Println(
-				"Status: UPDATE STATE ERROR",
-			)
-
-			fmt.Println(
-				"Error:",
-				err,
-			)
-
-			return
-		}
-
-		fmt.Println(
-			"Status: RELEASE QUARANTINED",
-		)
-
-		fmt.Println(
-			"Version:",
-			check.LatestVersion,
-		)
-
-		fmt.Println(
-			"Failures:",
-			state.QuarantineFailureCount,
-		)
-
-		fmt.Println()
-		fmt.Println(
-			"Installation refused.",
-		)
-
-		fmt.Println(
-			"To explicitly clear quarantine:",
-		)
-
-		fmt.Println(
-			"sudo sentinelctl update quarantine clear",
-		)
-
-		return
-	}
-
-	fmt.Println(
-		"Status: UPDATE AVAILABLE",
-	)
-
-	if err := startUpdateInstallLifecycle(
-		stateStore,
-		version.Version,
-		check.LatestVersion,
-	); err != nil {
-
-		fmt.Println(
-			"Status: UPDATE STATE ERROR",
-		)
-
-		fmt.Println(
-			"Error:",
-			err,
-		)
-
-		return
-	}
-
-	assets, err := updater.SelectCurrentPlatformAssets(
-		check.Release,
-	)
-
-	if err != nil {
-
-		recordUpdateInstallFailure(
-			stateStore,
-			err,
-			false,
-			false,
-		)
-
-		fmt.Println(
-			"Status: RELEASE ASSET ERROR",
-		)
-
-		fmt.Println(
-			"Error:",
-			err,
-		)
-
-		return
-	}
-
-	fmt.Printf(
-		"Platform: %s/%s\n",
-		assets.OS,
-		assets.Arch,
-	)
-
-	fmt.Println(
-		"Package:",
-		assets.Package.Name,
-	)
-
-	fmt.Println(
-		"Checksum:",
-		assets.Checksum.Name,
-	)
-
-	workDir, err := os.MkdirTemp(
-		"",
-		"sentinel-update-*",
-	)
-
-	if err != nil {
-
-		recordUpdateInstallFailure(
-			stateStore,
-			err,
-			false,
-			false,
-		)
-
-		fmt.Println(
-			"Status: WORK DIRECTORY ERROR",
-		)
-
-		fmt.Println(
-			"Error:",
-			err,
-		)
-
-		return
-	}
-
-	defer os.RemoveAll(
-		workDir,
-	)
-
-	downloadDir := filepath.Join(
-		workDir,
-		"download",
-	)
-
-	fmt.Println(
-		"Downloading and verifying release...",
-	)
-
-	artifact, err := updater.DownloadAndVerify(
-		ctx,
-		assets,
-		downloadDir,
-	)
-
-	if err != nil {
-
-		recordUpdateInstallFailure(
-			stateStore,
-			err,
-			false,
-			false,
-		)
-
-		fmt.Println(
-			"Status: DOWNLOAD VERIFICATION FAILED",
-		)
-
-		fmt.Println(
-			"Error:",
-			err,
-		)
-
-		return
-	}
-
-	fmt.Println(
-		"SHA256:",
-		artifact.SHA256,
-	)
-
-	fmt.Println(
-		"Release package verified.",
-	)
-
-	extractDir := filepath.Join(
-		workDir,
-		"extract",
-	)
-
-	fmt.Println(
-		"Validating release manifest...",
-	)
-
-	release, err := updater.ExtractAndValidateRelease(
-		artifact,
-		extractDir,
-		check.LatestVersion,
-		assets.OS,
-		assets.Arch,
-	)
-
-	if err != nil {
-
-		recordUpdateInstallFailure(
-			stateStore,
-			err,
-			false,
-			false,
-		)
-
-		fmt.Println(
-			"Status: RELEASE VALIDATION FAILED",
-		)
-
-		fmt.Println(
-			"Error:",
-			err,
-		)
-
-		return
-	}
-
-	fmt.Println(
-		"Manifest verified.",
-	)
-
-	fmt.Println(
-		"Installing release...",
 	)
 
 	service := updater.NewSystemdController(
@@ -843,75 +485,76 @@ func runUpdateInstall() {
 		local.DefaultSocket,
 	)
 
-	activation, err := updater.ActivateRelease(
-		ctx,
-		release,
-		sentinelInstallDir,
-		check.LatestVersion,
-		version.Version,
+	executor := updater.NewInstallExecutor(
+		client,
+		updater.InstallExecutorConfig{
+			CurrentVersion: version.Version,
+
+			CheckInterval: cfg.Update.CheckInterval,
+
+			StatePath: cfg.Update.StatePath,
+
+			InstallDir: sentinelInstallDir,
+		},
 		service,
 		health,
 	)
 
+	result, err := executor.Execute(
+		context.Background(),
+		printUpdateExecutorEvent,
+	)
+
 	if err != nil {
 
-		recordUpdateInstallFailure(
-			stateStore,
-			err,
-			activation.RolledBack,
-			activation.RollbackVerified,
-		)
-
-		fmt.Println(
-			"Status: UPDATE FAILED",
-		)
-
-		fmt.Println(
-			"Error:",
+		printUpdateExecutorFailure(
+			result,
 			err,
 		)
 
-		if activation.RolledBack {
-
-			if activation.RollbackVerified {
-
-				fmt.Println(
-					"Rollback: VERIFIED",
-				)
-
-			} else {
-
-				fmt.Println(
-					"Rollback: NOT VERIFIED",
-				)
-			}
-		}
+		printUpdateExecutorWarnings(
+			result,
+		)
 
 		return
 	}
 
-	recordUpdateInstallSuccess(
-		stateStore,
-	)
+	if result.UpToDate {
+
+		fmt.Println(
+			"Status: UP TO DATE",
+		)
+
+		printUpdateExecutorWarnings(
+			result,
+		)
+
+		return
+	}
 
 	fmt.Println()
+
 	fmt.Println(
 		"Status: UPDATE SUCCESSFUL",
 	)
 
 	fmt.Println(
 		"Installed:",
-		activation.InstalledVersion,
+		result.Activation.InstalledVersion,
 	)
 
 	fmt.Println(
 		"Backup:",
-		activation.Install.SentineldBackupPath,
+		result.Activation.Install.SentineldBackupPath,
 	)
 
 	fmt.Println(
 		"Backup:",
-		activation.Install.SentinelctlBackupPath,
+		result.Activation.Install.SentinelctlBackupPath,
+	)
+
+	printUpdateExecutorWarnings(
+		result,
 	)
 }
 
