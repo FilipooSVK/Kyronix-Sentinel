@@ -1,0 +1,18 @@
+[Unit]
+Description=Kyronix Sentinel Update Worker
+Documentation=https://github.com/FilipooSVK/Kyronix-Sentinel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+
+User=root
+Group=root
+
+ExecStart=/usr/local/bin/sentinelctl update install
+
+TimeoutStartSec=5min
+
+StandardOutput=journal
+StandardError=journal
