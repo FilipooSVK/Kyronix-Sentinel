@@ -1,4 +1,4 @@
-# Kyronix Sentinel v0.1.2
+# Kyronix Sentinel 
 
 <p align="center">
   <strong>Predictive Linux host health monitoring, degradation detection and safe recovery intelligence.</strong>
