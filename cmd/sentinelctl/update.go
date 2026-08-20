@@ -17,6 +17,8 @@ const (
 	sentinelInstallDir = "/usr/local/bin"
 
 	sentinelServiceName = "sentineld.service"
+
+	sentinelWorkerUnitTarget = "/etc/systemd/system/sentinel-update.service"
 )
 
 func runUpdateCommand(
@@ -491,6 +493,8 @@ func runUpdateInstall() int {
 		sentinelServiceName,
 	)
 
+	reloader := updater.NewSystemdDaemonReloader()
+
 	health := updater.NewUnixHealthChecker(
 		local.DefaultSocket,
 	)
@@ -505,8 +509,11 @@ func runUpdateInstall() int {
 			StatePath: cfg.Update.StatePath,
 
 			InstallDir: sentinelInstallDir,
+
+			WorkerUnitTarget: sentinelWorkerUnitTarget,
 		},
 		service,
+		reloader,
 		health,
 	)
 

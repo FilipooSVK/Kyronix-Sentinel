@@ -171,32 +171,38 @@ func ValidateManifest(
 	for _, required := range []string{
 		"sentineld",
 		"sentinelctl",
+		"sentinel-update.service",
 	} {
 
-		file, exists := files[required]
-
-		if !exists {
+		if _, exists := files[required]; !exists {
 
 			return fmt.Errorf(
 				"required file missing from manifest: %s",
 				required,
 			)
 		}
+	}
 
-		path := filepath.Join(
+	// Every file declared by the manifest must exist as a regular
+	// file and match its declared SHA256. This ensures auxiliary
+	// release files receive the same integrity guarantees as the
+	// Sentinel binaries.
+	for _, manifestFile := range manifest.Files {
+
+		filePath := filepath.Join(
 			root,
-			required,
+			manifestFile.Name,
 		)
 
 		info, err := os.Lstat(
-			path,
+			filePath,
 		)
 
 		if err != nil {
 
 			return fmt.Errorf(
-				"required file missing: %s: %w",
-				required,
+				"manifest file missing: %s: %w",
+				manifestFile.Name,
 				err,
 			)
 		}
@@ -204,13 +210,13 @@ func ValidateManifest(
 		if !info.Mode().IsRegular() {
 
 			return fmt.Errorf(
-				"required file is not regular: %s",
-				required,
+				"manifest file is not regular: %s",
+				manifestFile.Name,
 			)
 		}
 
 		actualHash, err := FileSHA256(
-			path,
+			filePath,
 		)
 
 		if err != nil {
@@ -219,12 +225,12 @@ func ValidateManifest(
 
 		if !strings.EqualFold(
 			actualHash,
-			file.SHA256,
+			manifestFile.SHA256,
 		) {
 
 			return fmt.Errorf(
 				"SHA256 mismatch for %s",
-				required,
+				manifestFile.Name,
 			)
 		}
 	}

@@ -39,6 +39,10 @@ func createTestReleaseArchive(
 		"test sentinelctl binary",
 	)
 
+	updateService := []byte(
+		"[Service]\nType=oneshot\nExecStart=/usr/local/bin/sentinelctl update install\n",
+	)
+
 	sentineldHash := fmt.Sprintf(
 		"%x",
 		sha256.Sum256(sentineld),
@@ -47,6 +51,11 @@ func createTestReleaseArchive(
 	sentinelctlHash := fmt.Sprintf(
 		"%x",
 		sha256.Sum256(sentinelctl),
+	)
+
+	updateServiceHash := fmt.Sprintf(
+		"%x",
+		sha256.Sum256(updateService),
 	)
 
 	manifest := Manifest{
@@ -64,6 +73,10 @@ func createTestReleaseArchive(
 			{
 				Name:   "sentinelctl",
 				SHA256: sentinelctlHash,
+			},
+			{
+				Name:   "sentinel-update.service",
+				SHA256: updateServiceHash,
 			},
 		},
 	}
@@ -104,6 +117,11 @@ func createTestReleaseArchive(
 			{
 				Name: "sentinelctl",
 				Data: sentinelctl,
+				Type: tar.TypeReg,
+			},
+			{
+				Name: "sentinel-update.service",
+				Data: updateService,
 				Type: tar.TypeReg,
 			},
 		},
@@ -226,6 +244,30 @@ func TestExtractAndValidateRelease(
 		t.Fatalf(
 			"unexpected version: %s",
 			result.Manifest.Version,
+		)
+	}
+
+	workerPath := result.WorkerUnitPath
+
+	if workerPath == "" {
+
+		t.Fatal(
+			"expected WorkerUnitPath",
+		)
+	}
+
+	workerInfo, err := os.Stat(
+		workerPath,
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !workerInfo.Mode().IsRegular() {
+
+		t.Fatal(
+			"expected extracted worker unit to be a regular file",
 		)
 	}
 

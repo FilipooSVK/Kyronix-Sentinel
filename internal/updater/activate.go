@@ -2,13 +2,23 @@ package updater
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
+
+// ActivationOptions configures release-managed auxiliary resources.
+type ActivationOptions struct {
+	WorkerUnitTarget string
+
+	Reloader SystemdReloader
+}
 
 // ActivationResult describes the result of installing
 // and activating a Sentinel release.
 type ActivationResult struct {
 	Install InstallResult
+
+	WorkerUnit *UnitInstallResult
 
 	InstalledVersion string
 
@@ -20,6 +30,9 @@ type ActivationResult struct {
 // ActivateRelease installs a validated release, restarts Sentinel,
 // verifies the new version and automatically restores the previous
 // release when activation fails.
+//
+// When ActivationOptions are supplied, the Sentinel update worker
+// systemd unit participates in the same activation transaction.
 func ActivateRelease(
 	ctx context.Context,
 	release ExtractedRelease,
@@ -28,6 +41,7 @@ func ActivateRelease(
 	previousVersion string,
 	service ServiceController,
 	health VersionHealthChecker,
+	options ...ActivationOptions,
 ) (ActivationResult, error) {
 
 	if service == nil {
@@ -64,6 +78,15 @@ func ActivateRelease(
 		)
 	}
 
+	activationOptions, workerEnabled, err :=
+		resolveActivationOptions(
+			options,
+		)
+
+	if err != nil {
+		return ActivationResult{}, err
+	}
+
 	installResult, err := InstallRelease(
 		release,
 		targetDir,
@@ -81,6 +104,86 @@ func ActivateRelease(
 		),
 	}
 
+	var workerInstall *UnitInstallResult
+
+	if workerEnabled {
+
+		unitResult, unitErr := InstallWorkerUnit(
+			release.WorkerUnitPath,
+			activationOptions.WorkerUnitTarget,
+		)
+
+		if unitErr != nil {
+
+			result.RolledBack = true
+
+			rollbackErr := rollbackActivation(
+				ctx,
+				targetDir,
+				previousVersion,
+				nil,
+				activationOptions.Reloader,
+				service,
+				health,
+			)
+
+			if rollbackErr != nil {
+
+				return result, fmt.Errorf(
+					"worker unit installation failed: %v; rollback failed: %v",
+					unitErr,
+					rollbackErr,
+				)
+			}
+
+			result.RollbackVerified = true
+
+			return result, fmt.Errorf(
+				"worker unit installation failed: %w; previous release restored",
+				unitErr,
+			)
+		}
+
+		workerInstall = &unitResult
+
+		result.WorkerUnit =
+			workerInstall
+
+		if reloadErr :=
+			activationOptions.Reloader.DaemonReload(
+				ctx,
+			); reloadErr != nil {
+
+			result.RolledBack = true
+
+			rollbackErr := rollbackActivation(
+				ctx,
+				targetDir,
+				previousVersion,
+				workerInstall,
+				activationOptions.Reloader,
+				service,
+				health,
+			)
+
+			if rollbackErr != nil {
+
+				return result, fmt.Errorf(
+					"systemd daemon reload failed after worker unit installation: %v; rollback failed: %v",
+					reloadErr,
+					rollbackErr,
+				)
+			}
+
+			result.RollbackVerified = true
+
+			return result, fmt.Errorf(
+				"systemd daemon reload failed after worker unit installation: %w; previous release restored",
+				reloadErr,
+			)
+		}
+	}
+
 	if err := service.Restart(
 		ctx,
 	); err != nil {
@@ -91,6 +194,8 @@ func ActivateRelease(
 			ctx,
 			targetDir,
 			previousVersion,
+			workerInstall,
+			activationOptions.Reloader,
 			service,
 			health,
 		)
@@ -123,6 +228,8 @@ func ActivateRelease(
 			ctx,
 			targetDir,
 			previousVersion,
+			workerInstall,
+			activationOptions.Reloader,
 			service,
 			health,
 		)
@@ -147,44 +254,147 @@ func ActivateRelease(
 	return result, nil
 }
 
+func resolveActivationOptions(
+	options []ActivationOptions,
+) (
+	ActivationOptions,
+	bool,
+	error,
+) {
+
+	if len(options) == 0 {
+
+		return ActivationOptions{},
+			false,
+			nil
+	}
+
+	if len(options) > 1 {
+
+		return ActivationOptions{},
+			false,
+			fmt.Errorf(
+				"multiple activation option sets are not supported",
+			)
+	}
+
+	option := options[0]
+
+	if option.WorkerUnitTarget == "" {
+
+		return ActivationOptions{},
+			false,
+			fmt.Errorf(
+				"worker unit target path is empty",
+			)
+	}
+
+	if option.Reloader == nil {
+
+		return ActivationOptions{},
+			false,
+			fmt.Errorf(
+				"systemd reloader is nil",
+			)
+	}
+
+	return option,
+		true,
+		nil
+}
+
 func rollbackActivation(
 	ctx context.Context,
 	targetDir string,
 	previousVersion string,
+	workerInstall *UnitInstallResult,
+	reloader SystemdReloader,
 	service ServiceController,
 	health VersionHealthChecker,
 ) error {
+
+	var rollbackErrors []error
+
+	binariesRestored := true
 
 	if err := RestorePrevious(
 		targetDir,
 	); err != nil {
 
-		return fmt.Errorf(
-			"restore previous binaries failed: %w",
-			err,
+		binariesRestored = false
+
+		rollbackErrors = append(
+			rollbackErrors,
+			fmt.Errorf(
+				"restore previous binaries failed: %w",
+				err,
+			),
 		)
 	}
 
-	if err := service.Restart(
-		ctx,
-	); err != nil {
+	if workerInstall != nil {
 
-		return fmt.Errorf(
-			"restart after rollback failed: %w",
-			err,
-		)
+		if err := RestoreWorkerUnit(
+			*workerInstall,
+		); err != nil {
+
+			rollbackErrors = append(
+				rollbackErrors,
+				fmt.Errorf(
+					"restore previous worker unit failed: %w",
+					err,
+				),
+			)
+		}
 	}
 
-	if err := health.WaitForVersion(
-		ctx,
-		previousVersion,
-	); err != nil {
+	if reloader != nil {
 
-		return fmt.Errorf(
-			"rollback health verification failed: %w",
-			err,
-		)
+		if err := reloader.DaemonReload(
+			ctx,
+		); err != nil {
+
+			rollbackErrors = append(
+				rollbackErrors,
+				fmt.Errorf(
+					"systemd daemon reload after rollback failed: %w",
+					err,
+				),
+			)
+		}
 	}
 
-	return nil
+	// Only restart if the old binaries were actually restored.
+	if binariesRestored {
+
+		if err := service.Restart(
+			ctx,
+		); err != nil {
+
+			rollbackErrors = append(
+				rollbackErrors,
+				fmt.Errorf(
+					"restart after rollback failed: %w",
+					err,
+				),
+			)
+
+		} else if err := health.WaitForVersion(
+			ctx,
+			previousVersion,
+		); err != nil {
+
+			rollbackErrors = append(
+				rollbackErrors,
+				fmt.Errorf(
+					"rollback health verification failed: %w",
+					err,
+				),
+			)
+		}
+	}
+
+	return errors.Join(
+		rollbackErrors...,
+	)
 }

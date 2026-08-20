@@ -39,6 +39,21 @@ func main() {
 		cfg.Logging.Level,
 	)
 
+	if err := bootstrapUpdateWorker(
+		cfg,
+		logger,
+	); err != nil {
+
+		logger.Error(
+			"update worker bootstrap failed",
+			map[string]interface{}{
+				"error": err.Error(),
+			},
+		)
+
+		os.Exit(1)
+	}
+
 	logger.Info(
 		"Kyronix Sentinel daemon started",
 		map[string]interface{}{

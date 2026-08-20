@@ -68,6 +68,8 @@ type InstallExecutorConfig struct {
 	StatePath string
 
 	InstallDir string
+
+	WorkerUnitTarget string
 }
 
 type InstallExecutorResult struct {
@@ -99,6 +101,8 @@ type InstallExecutor struct {
 
 	health VersionHealthChecker
 
+	reloader SystemdReloader
+
 	selectAssets func(
 		Release,
 	) (ReleaseAssets, error)
@@ -125,6 +129,7 @@ type InstallExecutor struct {
 		string,
 		ServiceController,
 		VersionHealthChecker,
+		...ActivationOptions,
 	) (ActivationResult, error)
 
 	now func() time.Time
@@ -139,6 +144,7 @@ func NewInstallExecutor(
 	checker ReleaseChecker,
 	config InstallExecutorConfig,
 	service ServiceController,
+	reloader SystemdReloader,
 	health VersionHealthChecker,
 ) *InstallExecutor {
 
@@ -148,6 +154,8 @@ func NewInstallExecutor(
 		config: config,
 
 		service: service,
+
+		reloader: reloader,
 
 		health: health,
 
@@ -534,6 +542,11 @@ func (e *InstallExecutor) Execute(
 			e.config.CurrentVersion,
 			e.service,
 			e.health,
+			ActivationOptions{
+				WorkerUnitTarget: e.config.WorkerUnitTarget,
+
+				Reloader: e.reloader,
+			},
 		)
 
 	result.Activation =
@@ -604,6 +617,12 @@ func (e *InstallExecutor) validate() error {
 		)
 	}
 
+	if e.reloader == nil {
+		return fmt.Errorf(
+			"systemd reloader is nil",
+		)
+	}
+
 	if !IsValidVersion(
 		e.config.CurrentVersion,
 	) {
@@ -636,6 +655,15 @@ func (e *InstallExecutor) validate() error {
 
 		return fmt.Errorf(
 			"install directory is empty",
+		)
+	}
+
+	if strings.TrimSpace(
+		e.config.WorkerUnitTarget,
+	) == "" {
+
+		return fmt.Errorf(
+			"worker unit target path is empty",
 		)
 	}
 

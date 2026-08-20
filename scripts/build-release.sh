@@ -96,12 +96,20 @@ build_release() {
         -o "${stage_dir}/sentinelctl" \
         "${ROOT_DIR}/cmd/sentinelctl"
 
+    cp \
+        "${ROOT_DIR}/systemd/sentinel-update.service" \
+        "${stage_dir}/sentinel-update.service"
+
     chmod 0755 \
         "${stage_dir}/sentineld" \
         "${stage_dir}/sentinelctl"
 
+    chmod 0644 \
+        "${stage_dir}/sentinel-update.service"
+
     local sentineld_sha
     local sentinelctl_sha
+    local update_service_sha
 
     sentineld_sha="$(
         sha256sum "${stage_dir}/sentineld" |
@@ -110,6 +118,11 @@ build_release() {
 
     sentinelctl_sha="$(
         sha256sum "${stage_dir}/sentinelctl" |
+        awk '{print $1}'
+    )"
+
+    update_service_sha="$(
+        sha256sum "${stage_dir}/sentinel-update.service" |
         awk '{print $1}'
     )"
 
@@ -126,6 +139,10 @@ build_release() {
     {
       "name": "sentinelctl",
       "sha256": "${sentinelctl_sha}"
+    },
+    {
+      "name": "sentinel-update.service",
+      "sha256": "${update_service_sha}"
     }
   ]
 }
@@ -136,7 +153,8 @@ MANIFEST
         -czf "${archive_path}" \
         manifest.json \
         sentineld \
-        sentinelctl
+        sentinelctl \
+        sentinel-update.service
 
     (
         cd "${DIST_DIR}"

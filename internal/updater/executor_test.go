@@ -16,6 +16,14 @@ func (s *executorTestService) Restart(
 	return nil
 }
 
+type executorTestReloader struct{}
+
+func (r *executorTestReloader) DaemonReload(
+	ctx context.Context,
+) error {
+	return nil
+}
+
 type executorTestHealth struct{}
 
 func (h *executorTestHealth) WaitForVersion(
@@ -44,6 +52,12 @@ func newExecutorTestConfig(
 		InstallDir: filepath.Join(
 			t.TempDir(),
 			"bin",
+		),
+
+		WorkerUnitTarget: filepath.Join(
+			t.TempDir(),
+			"systemd",
+			updateWorkerUnitName,
 		),
 	}
 }
@@ -76,6 +90,7 @@ func TestInstallExecutorUpToDate(
 		checker,
 		cfg,
 		&executorTestService{},
+		&executorTestReloader{},
 		&executorTestHealth{},
 	)
 
@@ -168,6 +183,7 @@ func TestInstallExecutorHonorsOperationLock(
 		checker,
 		cfg,
 		&executorTestService{},
+		&executorTestReloader{},
 		&executorTestHealth{},
 	)
 
@@ -229,6 +245,7 @@ func TestInstallExecutorSuccessfulPipeline(
 		checker,
 		cfg,
 		&executorTestService{},
+		&executorTestReloader{},
 		&executorTestHealth{},
 	)
 
@@ -296,6 +313,7 @@ func TestInstallExecutorSuccessfulPipeline(
 			previousVersion string,
 			service ServiceController,
 			health VersionHealthChecker,
+			options ...ActivationOptions,
 		) (ActivationResult, error) {
 
 			return ActivationResult{
@@ -407,6 +425,7 @@ func TestInstallExecutorRecordsPipelineFailure(
 		checker,
 		cfg,
 		&executorTestService{},
+		&executorTestReloader{},
 		&executorTestHealth{},
 	)
 

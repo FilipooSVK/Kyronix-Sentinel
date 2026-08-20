@@ -28,6 +28,8 @@ type ExtractedRelease struct {
 	SentineldPath string
 
 	SentinelctlPath string
+
+	WorkerUnitPath string
 }
 
 // ExtractAndValidateRelease safely extracts a verified update package
@@ -128,6 +130,11 @@ func ExtractAndValidateRelease(
 		"sentinelctl",
 	)
 
+	workerUnitPath := filepath.Join(
+		root,
+		"sentinel-update.service",
+	)
+
 	if err := os.Chmod(
 		sentineldPath,
 		0755,
@@ -156,6 +163,8 @@ func ExtractAndValidateRelease(
 		SentineldPath: sentineldPath,
 
 		SentinelctlPath: sentinelctlPath,
+
+		WorkerUnitPath: workerUnitPath,
 	}, nil
 }
 
