@@ -30,7 +30,201 @@
 </p>
 
 ---
+# ⚡ Quick Install
 
+Kyronix Sentinel v1.0.0 can be installed directly from the official GitHub Release using the one-command installer.
+
+The installer automatically:
+
+- detects the Linux architecture (ARM64 / AMD64),
+- downloads the latest stable release,
+- verifies SHA256 checksums,
+- validates the release manifest,
+- installs Sentinel binaries,
+- installs systemd services,
+- creates the default configuration,
+- starts the Sentinel daemon.
+
+---
+
+## Install
+
+Run:
+```bash
+curl -fsSL \
+https://raw.githubusercontent.com/FilipooSVK/Kyronix-Sentinel/main/scripts/install.sh \
+| sudo bash
+```
+---
+
+# ✅ Installation Verification
+
+## Check installed version
+
+Command:
+
+```bash
+sentinelctl version
+```
+
+Expected:
+
+Kyronix Sentinel
+Version: 1.0.0
+
+
+---
+
+## Check Sentinel daemon
+
+Command:
+
+```bash
+systemctl is-active sentineld
+```
+
+Expected:
+
+active
+
+
+Detailed status:
+
+```bash
+systemctl status sentineld --no-pager
+```
+
+---
+
+## Check host health
+
+Command:
+
+```bash
+sentinelctl status
+```
+
+Example:
+
+Kyronix Sentinel
+
+Running: true
+Health: 100
+Risk: LOW
+
+
+---
+
+## Check prediction engine
+
+Command:
+
+```bash
+sentinelctl prediction
+```
+
+Example:
+
+Kyronix Sentinel Prediction
+
+Risk: LOW
+Score: 10
+Confidence: 90%
+Recommendation: MONITOR
+
+
+---
+
+## Verify update system
+
+Command:
+
+```bash
+sentinelctl update check
+```
+
+Expected:
+
+Kyronix Sentinel Update
+
+Current: v1.0.0
+Latest: v1.0.0
+Status: UP TO DATE
+
+
+---
+
+## Verify update worker
+
+Sentinel includes a dedicated systemd update worker.
+
+Check worker:
+
+```bash
+systemctl status sentinel-update.service
+```
+
+Run manual test:
+
+```bash
+sudo systemctl start sentinel-update.service
+```
+
+Verify result:
+
+```bash
+systemctl show sentinel-update.service \
+-p Result \
+-p ExecMainStatus
+```
+
+Expected:
+
+Result=success
+ExecMainStatus=0
+
+
+---
+
+# Useful diagnostic commands
+
+Sentinel status:
+
+```bash
+sentinelctl status
+```
+
+Prediction:
+
+```bash
+sentinelctl prediction
+```
+
+Update status:
+
+```bash
+sentinelctl update status
+```
+
+Update policy:
+
+```bash
+sentinelctl update policy
+```
+
+View daemon logs:
+
+```bash
+journalctl -u sentineld -f
+```
+
+---
+
+Kyronix Sentinel v1.0.0
+
+Observe early. Predict degradation. Recover safely.
+
+---
 ## 🛡️ What is Kyronix Sentinel?
 
 **Kyronix Sentinel** is a lightweight Linux host health agent designed to detect **system degradation before it becomes a failure**.
