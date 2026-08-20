@@ -1,4 +1,4 @@
-# Kyronix Sentinel 
+<h1 align="center">Kyronix Sentinel</h1>
 
 <p align="center">
   <strong>Predictive Linux host health monitoring, degradation detection and safe recovery intelligence.</strong>
@@ -20,7 +20,7 @@
   <img src="https://img.shields.io/badge/Language-Go-00ADD8?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Health-Predictive-orange?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Updates-GitHub%20Releases-6f42c1?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Status-Development-yellow?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Status-Stable-yellow?style=for-the-badge" />
 </p>
 
 ---
@@ -40,7 +40,7 @@ Sentinel continuously collects host health information, evaluates multiple indep
 - **Prediction Confidence**
 - **Recovery Recommendation**
 
-The long-term goal is simple:
+The goal is simple:
 
 > Detect degradation early enough to take safe action before the host becomes unavailable.
 
@@ -87,11 +87,20 @@ Together — and especially when persistent — they can indicate that the syste
 - 🧰 Local `sentinelctl` management CLI
 - 🔌 Local Unix socket API
 - 🔄 GitHub Release update detection
-- 🔐 SHA256 update verification
-- 📦 Release manifest validation
+- 🔐 SHA256 package and manifest verification
+- 📦 Architecture-aware release validation
 - ⚙️ Atomic binary installation
-- 🛟 Automatic rollback infrastructure
+- 🛟 Automatic rollback with post-rollback verification
+- 🚫 Failed-release quarantine
+- 🔒 Global update operation lock
+- 🧾 Persistent update lifecycle state
+- 🧠 Automatic install policy engine
+- 👀 Observe-only automatic update mode
+- ⚙️ Dedicated systemd update worker
+- 🔁 Transactional worker-unit installation and rollback
+- 🧩 Clean-host worker bootstrap and migration support
 - 🐧 Native systemd integration
+- 🏗️ Linux ARM64 and AMD64 release builds
 
 ---
 
@@ -218,7 +227,7 @@ Example:
 Kyronix Sentinel
 
 Running: true
-Health: 90
+Health: 100
 Risk: LOW
 ```
 
@@ -234,7 +243,7 @@ Instead, it provides a fast operational answer to:
 
 ## 🔎 Current health signals
 
-Sentinel currently evaluates information from several Linux subsystems.
+Sentinel evaluates information from several Linux subsystems.
 
 ### Memory
 
@@ -318,9 +327,10 @@ Responsibilities include:
 - calculating health score,
 - estimating freeze risk,
 - generating predictions,
-- exposing the local management API.
-
----
+- exposing the local management API,
+- performing periodic update checks,
+- evaluating automatic-install policy,
+- provisioning the update worker on clean or migrated hosts.
 
 ### `sentinelctl`
 
@@ -328,15 +338,17 @@ The local Sentinel management CLI.
 
 Current commands include:
 
-```bash
+```text
 sentinelctl version
 sentinelctl status
 sentinelctl diagnose
 sentinelctl prediction
+
 sentinelctl update check
 sentinelctl update status
 sentinelctl update policy
 sentinelctl update quarantine
+
 sudo sentinelctl update install
 sudo sentinelctl update quarantine clear
 ```
@@ -366,7 +378,7 @@ The API is also used by the update system to verify that a newly installed Senti
 
 ## 🔧 Configuration
 
-Default configuration:
+Default production configuration:
 
 ```text
 /etc/sentinel/sentinel.yaml
@@ -392,14 +404,23 @@ update:
   repository: Kyronix-Sentinel
   auto_check: true
   auto_install: false
+  auto_install_mode: observe_only
   check_interval: 24h
   state_path: /var/lib/sentinel/update-state.json
+
   auto_install_policy:
     min_release_age: 24h
     patch_only: true
 ```
 
-Automatic update installation remains disabled by default.
+Automatic update installation remains **disabled by default**.
+
+The recommended production mode for `v1.0.0` is:
+
+```yaml
+auto_install: false
+auto_install_mode: observe_only
+```
 
 ---
 
@@ -413,14 +434,14 @@ Check for a newer release:
 sentinelctl update check
 ```
 
-Example:
+Example when already current:
 
 ```text
 Kyronix Sentinel Update
 
-Current: v0.1.0
-Latest: v0.1.1
-Status: UPDATE AVAILABLE
+Current: v1.0.0
+Latest: v1.0.0
+Status: UP TO DATE
 ```
 
 Install an available update:
@@ -431,7 +452,7 @@ sudo sentinelctl update install
 
 ---
 
-### Update pipeline
+## 🔁 Update architecture
 
 ```text
 GitHub Releases
@@ -452,7 +473,7 @@ Download checksum
 Download package
       │
       ▼
-Verify SHA256
+Verify outer SHA256
       │
       ▼
 Safe archive extraction
@@ -461,13 +482,19 @@ Safe archive extraction
 Validate manifest
       │
       ▼
-Stage new binaries
+Verify every manifest file SHA256
       │
       ▼
 Backup current binaries
       │
       ▼
-Atomic installation
+Atomic binary installation
+      │
+      ▼
+Install/update systemd worker unit
+      │
+      ▼
+systemctl daemon-reload
       │
       ▼
 Restart sentineld
@@ -478,20 +505,37 @@ Local API health check
       ▼
 Verify expected version
       │
-      ▼
-UPDATE SUCCESS
+      ├── SUCCESS
+      │
+      └── FAILURE
+             │
+             ▼
+      Restore binaries
+             │
+             ▼
+      Restore worker unit
+             │
+             ▼
+      daemon-reload
+             │
+             ▼
+      Restart previous sentineld
+             │
+             ▼
+      Verify rollback
 ```
 
 ---
 
 ## 🔐 Update security
 
-Sentinel release archives contain only:
+Sentinel `v1.0.0` release archives contain:
 
 ```text
 manifest.json
 sentineld
 sentinelctl
+sentinel-update.service
 ```
 
 The manifest defines:
@@ -499,17 +543,17 @@ The manifest defines:
 - release version,
 - target operating system,
 - target architecture,
-- expected binary files,
-- SHA256 hash for each binary.
+- expected release files,
+- SHA256 hash for every declared file.
 
-Example assets:
+Example `v1.0.0` release assets:
 
 ```text
-sentinel-v0.1.2-linux-arm64.tar.gz
-sentinel-v0.1.2-linux-arm64.tar.gz.sha256
+sentinel-v1.0.0-linux-arm64.tar.gz
+sentinel-v1.0.0-linux-arm64.tar.gz.sha256
 
-sentinel-v0.1.2-linux-amd64.tar.gz
-sentinel-v0.1.2-linux-amd64.tar.gz.sha256
+sentinel-v1.0.0-linux-amd64.tar.gz
+sentinel-v1.0.0-linux-amd64.tar.gz.sha256
 ```
 
 Unsafe archive contents are rejected, including:
@@ -524,85 +568,172 @@ Unsafe archive contents are rejected, including:
 
 ## 🛟 Rollback protection
 
-Before replacing the running Sentinel binaries, the updater keeps the previous versions as:
+Before replacing the running Sentinel binaries, the updater preserves the previous versions as:
 
 ```text
 /usr/local/bin/sentineld.previous
 /usr/local/bin/sentinelctl.previous
 ```
 
-If activation or the post-install health check fails, the updater contains logic to restore the previous binaries and restart Sentinel.
+The update worker unit is also handled transactionally.
 
-Rollback infrastructure is implemented and has been validated with controlled activation failures.
+If activation fails, Sentinel restores:
 
-Failed releases that require a verified rollback are automatically quarantined to prevent repeated installation attempts until an operator explicitly clears the quarantine.
+- the previous `sentineld`,
+- the previous `sentinelctl`,
+- the previous `sentinel-update.service`, or removes the newly provisioned unit if none existed before,
+- the previous systemd unit state through `daemon-reload`.
+
+Sentinel then restarts the previous daemon and verifies the previous version through the local health API.
+
+A failed activation is not considered safely rolled back until rollback verification succeeds.
 
 ---
 
-## ✅ First successful self-update
+## 🚫 Release quarantine
 
-The first complete end-to-end Sentinel update was successfully validated with:
+Failed releases that require a verified rollback are automatically quarantined.
 
-```text
-v0.1.0
-   │
-   ▼
-GitHub Release v0.1.1
-   │
-   ▼
-ARM64 package selected
-   │
-   ▼
-SHA256 verified
-   │
-   ▼
-Manifest validated
-   │
-   ▼
-Atomic install
-   │
-   ▼
-sentineld restarted
-   │
-   ▼
-Local health check passed
-   │
-   ▼
-Version verified
-   │
-   ▼
-v0.1.1
+This prevents Sentinel from repeatedly attempting to install a release that already failed activation.
+
+Inspect quarantine state:
+
+```bash
+sentinelctl update quarantine
 ```
 
-After the update:
+Clear quarantine manually:
+
+```bash
+sudo sentinelctl update quarantine clear
+```
+
+---
+
+## 🔒 Update operation lock
+
+Sentinel uses a global update operation lock to prevent concurrent update transactions.
+
+Only one update transaction can modify the installation at a time.
+
+---
+
+## ⚙️ Dedicated update worker
+
+Automatic installation is separated from the long-running Sentinel daemon.
+
+The dedicated worker is:
 
 ```text
-Current: v0.1.1
-Latest: v0.1.1
+sentinel-update.service
+```
+
+It executes:
+
+```text
+/usr/local/bin/sentinelctl update install
+```
+
+The worker is a root-owned systemd oneshot service.
+
+A successful execution normally ends as:
+
+```text
+LoadState=loaded
+ActiveState=inactive
+SubState=dead
+Result=success
+ExecMainStatus=0
+```
+
+---
+
+## 🧩 Clean-host bootstrap
+
+`v1.0.0` includes a clean-host and migration bootstrap for the update worker.
+
+If `sentinel-update.service` is missing when the new daemon starts, `sentineld` provisions the canonical worker unit into:
+
+```text
+/etc/systemd/system/sentinel-update.service
+```
+
+and performs:
+
+```text
+systemctl daemon-reload
+```
+
+This allows hosts upgrading from earlier development builds to migrate to the `v1.0.0` update architecture without requiring a manually preinstalled worker service.
+
+The bootstrap does not overwrite an existing regular worker unit.
+
+---
+
+## ✅ v1.0.0 release validation
+
+Kyronix Sentinel `v1.0.0` passed the release validation workflow before publication.
+
+Validated areas include:
+
+- complete Go test suite,
+- `go vet`,
+- release script validation,
+- ARM64 release build,
+- AMD64 release build,
+- external archive SHA256 verification,
+- manifest SHA256 verification,
+- worker unit inclusion,
+- live `v1.0.0` daemon runtime,
+- Health Score runtime verification,
+- prediction engine runtime verification,
+- clean-host worker bootstrap,
+- systemd worker loading,
+- worker execution,
+- worker exit-code contract.
+
+Example validated runtime:
+
+```text
+Kyronix Sentinel
+
+Running: true
+Health: 100
+Risk: LOW
+```
+
+Update check:
+
+```text
+Kyronix Sentinel Update
+Current: v1.0.0
+Latest: v1.0.0
 Status: UP TO DATE
 ```
 
 ---
 
-## 🐧 Supported platforms
+## 🐧 Supported builds
 
 | Platform | Architecture | Status |
-| -------- | ------------ | ------ |
-| Linux    | ARM64        | ✅ Supported |
-| Linux    | AMD64        | ✅ Supported |
+|---|---|---|
+| Linux | ARM64 | ✅ Supported build |
+| Linux | AMD64 | ✅ Supported build |
 
-Primary development currently focuses on:
+Primary development and validation currently focus on:
 
-- Debian
-- Ubuntu
-- Raspberry Pi OS / Debian-based ARM64 systems
+- Debian-based Linux
+- Ubuntu-based Linux
+- Raspberry Pi / ARM64 Linux
+- Linux infrastructure hosts
+- Kyronix development environments
 
-Future environments include:
+Planned environment-specific validation includes:
 
-- Proxmox VE
+- Proxmox VE hosts
 - Docker hosts
 - infrastructure appliances
-- Kyronix Stratus OS
+- Kyronix Stratus OS appliances
 
 ---
 
@@ -632,13 +763,9 @@ Build Sentinel:
 ```bash
 mkdir -p bin
 
-GOTOOLCHAIN=local go build \
-  -o bin/sentineld \
-  ./cmd/sentineld
+GOTOOLCHAIN=local go build   -o bin/sentineld   ./cmd/sentineld
 
-GOTOOLCHAIN=local go build \
-  -o bin/sentinelctl \
-  ./cmd/sentinelctl
+GOTOOLCHAIN=local go build   -o bin/sentinelctl   ./cmd/sentinelctl
 ```
 
 ---
@@ -650,13 +777,13 @@ Sentinel includes its own release builder.
 Example:
 
 ```bash
-./scripts/build-release.sh 0.1.2
+./scripts/build-release.sh 1.0.0
 ```
 
 Generated artifacts are stored under:
 
 ```text
-dist/v0.1.2/
+dist/v1.0.0/
 ```
 
 The release builder automatically:
@@ -665,8 +792,10 @@ The release builder automatically:
 - builds AMD64 binaries,
 - embeds version metadata,
 - embeds Git commit information,
+- embeds build date,
+- includes the systemd update worker,
 - generates release manifests,
-- calculates binary SHA256 hashes,
+- calculates SHA256 hashes for release files,
 - creates compressed release archives,
 - generates external archive checksums.
 
@@ -676,13 +805,19 @@ The release builder automatically:
 
 Sentinel runs as a native systemd service.
 
-Service:
+Main daemon:
 
 ```text
 sentineld.service
 ```
 
-Check its state:
+Update worker:
+
+```text
+sentinel-update.service
+```
+
+Check daemon state:
 
 ```bash
 systemctl status sentineld
@@ -694,29 +829,27 @@ Quick status:
 systemctl is-active sentineld
 ```
 
+Check update worker:
+
+```bash
+systemctl status sentinel-update.service
+```
+
 ---
 
 ## 🧭 Design principles
-
-Kyronix Sentinel follows several core principles.
 
 ### 🧠 Explainable decisions
 
 Every significant prediction should have observable reasons.
 
----
-
 ### 🧩 Multi-signal consensus
 
 One abnormal metric should not normally trigger a disruptive recovery action.
 
----
-
 ### 📈 History matters
 
 Persistent degradation is more important than a temporary spike.
-
----
 
 ### 🛡️ Conservative recovery
 
@@ -724,13 +857,9 @@ Rebooting a production host is disruptive.
 
 Sentinel must be confident before recommending — and eventually performing — recovery.
 
----
-
 ### 🔐 Safe updates
 
 Software updates must be verified before installation and recoverable when activation fails.
-
----
 
 ### 🪶 Lightweight by design
 
@@ -747,63 +876,79 @@ Instead, it provides lightweight **local host intelligence** focused specificall
 
 ## 🗺️ Roadmap
 
-### Completed
+### ✅ Completed for v1.0.0
 
-- [x] Linux host collectors
-- [x] CPU collector
-- [x] Memory collector
-- [x] Disk collector
-- [x] Kernel / OOM collector
-- [x] Linux PSI support
-- [x] Health Score
-- [x] Freeze Risk
-- [x] Historical trend analysis
-- [x] Persistent history
-- [x] Multi-signal prediction consensus
-- [x] Prediction explainability
-- [x] Local Unix socket API
-- [x] `sentinelctl`
-- [x] GitHub Release discovery
-- [x] Architecture-aware update selection
-- [x] SHA256 release verification
-- [x] Safe archive extraction
-- [x] Manifest validation
-- [x] Atomic binary installation
-- [x] Post-install health verification
-- [x] Rollback infrastructure
-- [x] First successful end-to-end self-update
-- [x] Periodic automatic update checks
-- [x] Persistent update state
-- [x] Persistent install lifecycle audit
-- [x] Verified rollback tracking
-- [x] Failed-release quarantine
-- [x] Multi-release quarantine registry
-- [x] `sentinelctl update status`
-- [x] `sentinelctl update policy`
-- [x] Automatic install policy engine
-- [x] Observe-only automatic install policy evaluation
+- Linux host collectors
+- CPU collector
+- Memory collector
+- Disk collector
+- Kernel / OOM collector
+- Linux PSI support
+- Health Score
+- Freeze Risk
+- Historical trend analysis
+- Persistent history
+- Multi-signal prediction consensus
+- Prediction explainability
+- Local Unix socket API
+- `sentinelctl`
+- GitHub Release discovery
+- Architecture-aware update selection
+- SHA256 package verification
+- Safe archive extraction
+- Full manifest file validation
+- Atomic binary installation
+- Post-install health verification
+- Automatic rollback
+- Verified rollback tracking
+- Failed-release quarantine
+- Multi-release quarantine registry
+- Persistent update state
+- Persistent install lifecycle audit
+- `sentinelctl update status`
+- `sentinelctl update policy`
+- Automatic install policy engine
+- Observe-only automatic install evaluation
+- Global update operation lock
+- Shared update install executor
+- Dedicated systemd update worker
+- Update worker execution gate
+- Worker exit-code contract
+- Transactional worker-unit provisioning
+- Worker-unit rollback
+- systemd `daemon-reload` integration
+- Clean-host worker bootstrap
+- ARM64 release builds
+- AMD64 release builds
+- Stable `v1.0.0` release
 
-### Next
+### 🔜 Next
 
-- [x] Controlled real-world rollback test
-- [ ] Unattended update executor
-- [ ] Recovery safety gates
-- [ ] Automatic recovery execution
-- [ ] Predictive reboot policy
-- [ ] Proxmox-specific intelligence
-- [ ] Docker host intelligence
+- Proxmox VE host deployment and validation
+- Proxmox-specific health intelligence
+- Recovery safety gates
+- Controlled automatic recovery execution
+- Predictive reboot policy
+- Docker host intelligence
+- Broader hardware and distribution validation
+- Additional prediction heuristics
 
 ---
 
-## ⚠️ Development status
+## ⚠️ Production status
 
-Kyronix Sentinel is currently an **experimental infrastructure project**.
+Kyronix Sentinel `v1.0.0` is the **first stable release**.
 
-Version `0.x` releases should be considered development releases.
+The monitoring, prediction, history, update validation, rollback, quarantine and worker-provisioning infrastructure have reached the first stable release milestone.
 
-Automatic reboot and unattended update installation are intentionally not enabled by default.
+However:
 
-Do not rely on Sentinel as the sole mechanism protecting critical production infrastructure.
+- automatic host reboot is not enabled,
+- `AUTO_RECOVERY` remains a recommendation,
+- automatic update installation is disabled by default,
+- the recommended update mode remains conservative and observe-only.
+
+Sentinel should complement — not replace — existing infrastructure monitoring and operational safeguards.
 
 ---
 
@@ -829,12 +974,19 @@ Useful contribution areas include:
 
 Official Kyronix Sentinel builds are published through GitHub Releases:
 
-**https://github.com/FilipooSVK/Kyronix-Sentinel/releases**
+https://github.com/FilipooSVK/Kyronix-Sentinel/releases
 
-Current release:
+Current stable release:
 
 ```text
-v0.1.1
+v1.0.0
+```
+
+Available builds:
+
+```text
+Linux ARM64
+Linux AMD64
 ```
 
 ---
