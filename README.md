@@ -1,6 +1,12 @@
 <h1 align="center">Kyronix Sentinel</h1>
 
 <p align="center">
+  <img src="images/sentinel.png" 
+       alt="Kyronix Sentinel v1.0.0" 
+       width="900"/>
+</p>
+
+<p align="center">
   <strong>Predictive Linux host health monitoring, degradation detection and safe recovery intelligence.</strong>
 </p>
 
