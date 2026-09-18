@@ -8,6 +8,22 @@ import (
 
 const clientTimeout = 5 * time.Second
 
+// GetHost returns current Sentinel host information.
+func GetHost(
+	socket string,
+) (Host, error) {
+
+	var host Host
+
+	err := request(
+		socket,
+		"host",
+		&host,
+	)
+
+	return host, err
+}
+
 // GetStatus returns current Sentinel status.
 func GetStatus(
 	socket string,

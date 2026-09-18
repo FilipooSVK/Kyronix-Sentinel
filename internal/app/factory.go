@@ -18,6 +18,10 @@ func NewDefaultEngine(
 ) *Engine {
 
 	snapshotManager := collector.NewSnapshotManager(
+		domain.HostIdentity{
+			Environment: cfg.Host.Environment,
+			Role:        cfg.Host.Role,
+		},
 		linux.NewHostCollector(),
 		linux.NewCPUCollector(),
 		linux.NewMemoryCollector(),

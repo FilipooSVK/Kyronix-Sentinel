@@ -24,6 +24,20 @@ func TestDefaultConfig(t *testing.T) {
 			cfg.History.Size,
 		)
 	}
+
+	if cfg.Host.Environment != "" {
+		t.Errorf(
+			"default host environment should be empty, got %q",
+			cfg.Host.Environment,
+		)
+	}
+
+	if cfg.Host.Role != "" {
+		t.Errorf(
+			"default host role should be empty, got %q",
+			cfg.Host.Role,
+		)
+	}
 }
 
 func TestLoadMissingFileReturnsDefault(t *testing.T) {

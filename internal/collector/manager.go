@@ -9,6 +9,8 @@ import (
 
 // SnapshotManager executes all collectors and builds a system snapshot.
 type SnapshotManager struct {
+	Identity domain.HostIdentity
+
 	Host     HostCollector
 	CPU      CPUCollector
 	Memory   MemoryCollector
@@ -19,6 +21,7 @@ type SnapshotManager struct {
 
 // NewSnapshotManager creates a snapshot manager.
 func NewSnapshotManager(
+	identity domain.HostIdentity,
 	host HostCollector,
 	cpu CPUCollector,
 	memory MemoryCollector,
@@ -27,6 +30,7 @@ func NewSnapshotManager(
 	kernel KernelCollector,
 ) *SnapshotManager {
 	return &SnapshotManager{
+		Identity: identity,
 		Host:     host,
 		CPU:      cpu,
 		Memory:   memory,
@@ -45,6 +49,7 @@ func (m *SnapshotManager) Collect(
 ) domain.Snapshot {
 	snapshot := domain.Snapshot{
 		Timestamp: time.Now(),
+		Identity:  m.Identity,
 	}
 
 	collectHost(ctx, m.Host, &snapshot)

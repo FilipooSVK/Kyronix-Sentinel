@@ -15,6 +15,7 @@ func main() {
 		fmt.Println("usage: sentinelctl <command>")
 		fmt.Println()
 		fmt.Println("commands:")
+		fmt.Println("  host")
 		fmt.Println("  status")
 		fmt.Println("  diagnose")
 		fmt.Println("  prediction")
@@ -39,6 +40,74 @@ func main() {
 			runUpdateCommand(
 				os.Args[2:],
 			),
+		)
+
+	case "host":
+
+		host, err := local.GetHost(
+			local.DefaultSocket,
+		)
+
+		if err != nil {
+
+			fmt.Println(
+				"Sentinel unavailable:",
+				err,
+			)
+
+			return
+		}
+
+		fmt.Println("Kyronix Sentinel Host")
+		fmt.Println()
+
+		fmt.Println(
+			"Hostname:",
+			host.Hostname,
+		)
+
+		if host.Environment != "" {
+
+			fmt.Println(
+				"Environment:",
+				host.Environment,
+			)
+		}
+
+		if host.Role != "" {
+
+			fmt.Println(
+				"Role:",
+				host.Role,
+			)
+		}
+
+		fmt.Println(
+			"Architecture:",
+			host.Architecture,
+		)
+
+		fmt.Println(
+			"OS:",
+			host.OSName,
+		)
+
+		if host.OSVersion != "" {
+
+			fmt.Println(
+				"OS Version:",
+				host.OSVersion,
+			)
+		}
+
+		fmt.Println(
+			"Kernel:",
+			host.KernelVersion,
+		)
+
+		fmt.Println(
+			"Uptime:",
+			host.Uptime,
 		)
 
 	case "diagnose":

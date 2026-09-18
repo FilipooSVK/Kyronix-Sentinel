@@ -75,6 +75,10 @@ func (f fakeKernelCollector) CollectKernel(context.Context) (domain.KernelStats,
 
 func TestSnapshotManagerCollect(t *testing.T) {
 	manager := NewSnapshotManager(
+		domain.HostIdentity{
+			Environment: "test",
+			Role:        "test-host",
+		},
 		fakeHostCollector{},
 		fakeCPUCollector{},
 		fakeMemoryCollector{},
@@ -93,6 +97,20 @@ func TestSnapshotManagerCollect(t *testing.T) {
 		t.Errorf(
 			"host uptime mismatch: got %s",
 			snapshot.Host.Uptime,
+		)
+	}
+
+	if snapshot.Identity.Environment != "test" {
+		t.Errorf(
+			"environment mismatch: got %q",
+			snapshot.Identity.Environment,
+		)
+	}
+
+	if snapshot.Identity.Role != "test-host" {
+		t.Errorf(
+			"role mismatch: got %q",
+			snapshot.Identity.Role,
 		)
 	}
 
@@ -127,6 +145,10 @@ func TestSnapshotManagerCollect(t *testing.T) {
 
 func TestSnapshotManagerHandlesUnavailableCollectors(t *testing.T) {
 	manager := NewSnapshotManager(
+		domain.HostIdentity{
+			Environment: "test",
+			Role:        "test-host",
+		},
 		fakeHostCollector{},
 		fakeCPUCollector{},
 		fakeMemoryCollector{},
@@ -168,6 +190,10 @@ func TestSnapshotManagerContextCancellation(t *testing.T) {
 	cancel()
 
 	manager := NewSnapshotManager(
+		domain.HostIdentity{
+			Environment: "test",
+			Role:        "test-host",
+		},
 		fakeHostCollector{},
 		fakeCPUCollector{},
 		fakeMemoryCollector{},

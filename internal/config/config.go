@@ -6,6 +6,8 @@ import "time"
 type Config struct {
 	Daemon DaemonConfig `yaml:"daemon"`
 
+	Host HostConfig `yaml:"host"`
+
 	History HistoryConfig `yaml:"history"`
 
 	Logging LoggingConfig `yaml:"logging"`
@@ -16,6 +18,13 @@ type Config struct {
 // DaemonConfig controls runtime behaviour.
 type DaemonConfig struct {
 	Interval time.Duration `yaml:"interval"`
+}
+
+// HostConfig controls administrator-defined host identity.
+type HostConfig struct {
+	Environment string `yaml:"environment"`
+
+	Role string `yaml:"role"`
 }
 
 // HistoryConfig controls history storage.
@@ -66,6 +75,11 @@ func Default() Config {
 	return Config{
 		Daemon: DaemonConfig{
 			Interval: 30 * time.Second,
+		},
+
+		Host: HostConfig{
+			Environment: "",
+			Role:        "",
 		},
 
 		History: HistoryConfig{

@@ -15,6 +15,13 @@ func (d *Daemon) evaluate() {
 
 	d.lastSnapshot = d.engine.LastSnapshot()
 
+	// Update current host information.
+	d.statusServer.UpdateHost(
+		BuildHost(
+			d.lastSnapshot,
+		),
+	)
+
 	// Update predictive runtime state.
 	d.UpdatePrediction()
 

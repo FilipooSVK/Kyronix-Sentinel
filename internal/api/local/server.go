@@ -24,6 +24,8 @@ type Server struct {
 
 	status Status
 
+	host Host
+
 	diagnostics Diagnostics
 
 	prediction Prediction
@@ -39,6 +41,8 @@ func NewServer(
 		socket: socket,
 
 		status: status,
+
+		host: Host{},
 
 		diagnostics: Diagnostics{},
 
@@ -160,6 +164,8 @@ func (s *Server) handleConnection(
 
 	status := s.status
 
+	host := s.host
+
 	diagnostics := s.diagnostics
 
 	prediction := s.prediction
@@ -167,6 +173,14 @@ func (s *Server) handleConnection(
 	s.mu.RUnlock()
 
 	switch request {
+
+	case "host":
+
+		_ = json.NewEncoder(
+			conn,
+		).Encode(
+			host,
+		)
 
 	case "diagnose":
 

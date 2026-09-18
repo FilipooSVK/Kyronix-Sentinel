@@ -1,6 +1,10 @@
 daemon:
   interval: 30s
 
+host:
+  environment: development
+  role: stratus-os-development
+
 history:
   size: 1000
   persistence: true

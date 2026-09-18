@@ -11,6 +11,7 @@ type Snapshot struct {
 	Timestamp time.Time `json:"timestamp"`
 
 	Host     HostStats     `json:"host"`
+	Identity HostIdentity  `json:"identity"`
 	CPU      CPUStats      `json:"cpu"`
 	Memory   MemoryStats   `json:"memory"`
 	Pressure PressureStats `json:"pressure"`
