@@ -88,6 +88,19 @@ func main() {
 		)
 
 		fmt.Println(
+			"Virtualization:",
+			host.Virtualization,
+		)
+
+		if host.Platform != "" {
+
+			fmt.Println(
+				"Platform:",
+				host.Platform,
+			)
+		}
+
+		fmt.Println(
 			"OS:",
 			host.OSName,
 		)

@@ -12,13 +12,15 @@ func TestBuildHost(
 ) {
 	snapshot := domain.Snapshot{
 		Host: domain.HostStats{
-			Hostname:      "kyronix-stratus-os",
-			Uptime:        7 * time.Hour,
-			Architecture:  "arm64",
-			OSID:          "debian",
-			OSName:        "Debian GNU/Linux 13 (trixie)",
-			OSVersion:     "13",
-			KernelVersion: "6.6.25-v8+",
+			Hostname:       "kyronix-stratus-os",
+			Uptime:         7 * time.Hour,
+			Architecture:   "arm64",
+			OSID:           "debian",
+			OSName:         "Debian GNU/Linux 13 (trixie)",
+			OSVersion:      "13",
+			KernelVersion:  "6.6.25-v8+",
+			Virtualization: "lxc",
+			Platform:       "proxmox",
 		},
 
 		Identity: domain.HostIdentity{
@@ -40,6 +42,20 @@ func TestBuildHost(
 		t.Fatalf(
 			"unexpected architecture: %s",
 			host.Architecture,
+		)
+	}
+
+	if host.Virtualization != "lxc" {
+		t.Fatalf(
+			"unexpected virtualization: %s",
+			host.Virtualization,
+		)
+	}
+
+	if host.Platform != "proxmox" {
+		t.Fatalf(
+			"unexpected platform: %s",
+			host.Platform,
 		)
 	}
 

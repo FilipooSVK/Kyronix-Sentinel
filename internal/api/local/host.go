@@ -18,6 +18,10 @@ type Host struct {
 
 	KernelVersion string `json:"kernel_version"`
 
+	Virtualization string `json:"virtualization"`
+
+	Platform string `json:"platform"`
+
 	Environment string `json:"environment"`
 
 	Role string `json:"role"`

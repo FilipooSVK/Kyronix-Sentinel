@@ -24,6 +24,10 @@ func BuildHost(
 
 		KernelVersion: snapshot.Host.KernelVersion,
 
+		Virtualization: snapshot.Host.Virtualization,
+
+		Platform: snapshot.Host.Platform,
+
 		Environment: snapshot.Identity.Environment,
 
 		Role: snapshot.Identity.Role,
