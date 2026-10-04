@@ -2,8 +2,12 @@ daemon:
   interval: 30s
 
 host:
-  environment: development
-  role: stratus-os-development
+  environment: ""
+  role: ""
+
+metrics:
+  enabled: false
+  listen_address: 127.0.0.1:19130
 
 history:
   size: 1000

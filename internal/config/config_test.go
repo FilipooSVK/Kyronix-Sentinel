@@ -38,6 +38,19 @@ func TestDefaultConfig(t *testing.T) {
 			cfg.Host.Role,
 		)
 	}
+
+	if cfg.Metrics.Enabled {
+		t.Error(
+			"metrics should be disabled by default",
+		)
+	}
+
+	if cfg.Metrics.ListenAddress != "127.0.0.1:19130" {
+		t.Errorf(
+			"unexpected metrics listen address: %q",
+			cfg.Metrics.ListenAddress,
+		)
+	}
 }
 
 func TestLoadMissingFileReturnsDefault(t *testing.T) {

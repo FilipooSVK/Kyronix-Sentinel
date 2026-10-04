@@ -7,6 +7,7 @@ import (
 	"kyronix/sentinel/internal/api/local"
 	"kyronix/sentinel/internal/domain"
 	"kyronix/sentinel/internal/logging"
+	sentinelmetrics "kyronix/sentinel/internal/metrics"
 	"kyronix/sentinel/internal/version"
 )
 
@@ -19,6 +20,8 @@ type Daemon struct {
 	logger *logging.Logger
 
 	statusServer *local.Server
+
+	metricsServer *sentinelmetrics.Server
 
 	lastResult domain.HealthResult
 
@@ -49,10 +52,38 @@ func NewDaemon(
 	}
 }
 
+// EnableMetrics enables the Prometheus-compatible metrics endpoint.
+func (d *Daemon) EnableMetrics(
+	address string,
+) {
+	d.metricsServer = sentinelmetrics.NewServer(
+		address,
+	)
+}
+
 // Run starts daemon lifecycle.
 func (d *Daemon) Run(
 	ctx context.Context,
 ) error {
+
+	if d.metricsServer != nil {
+		if err := d.metricsServer.Start(); err != nil {
+			return err
+		}
+
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(
+				context.Background(),
+				5*time.Second,
+			)
+
+			defer cancel()
+
+			_ = d.metricsServer.Shutdown(
+				shutdownCtx,
+			)
+		}()
+	}
 
 	err := d.statusServer.Start()
 

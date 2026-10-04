@@ -43,6 +43,9 @@ func (d *Daemon) evaluate() {
 		),
 	)
 
+	// Update Prometheus-compatible runtime metrics.
+	d.UpdateMetrics()
+
 	LogHealthResult(
 		d.logger,
 		result,

@@ -107,6 +107,39 @@ func main() {
 		logger,
 	)
 
+	if cfg.Metrics.Enabled {
+
+		if cfg.Metrics.ListenAddress == "" {
+
+			logger.Error(
+				"metrics endpoint not started",
+				map[string]interface{}{
+					"error": "metrics listen address is empty",
+				},
+			)
+
+			os.Exit(1)
+		}
+
+		daemon.EnableMetrics(
+			cfg.Metrics.ListenAddress,
+		)
+
+		logger.Info(
+			"Prometheus metrics endpoint enabled",
+			map[string]interface{}{
+				"listen_address": cfg.Metrics.ListenAddress,
+			},
+		)
+
+	} else {
+
+		logger.Info(
+			"Prometheus metrics endpoint disabled",
+			nil,
+		)
+	}
+
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
 		syscall.SIGINT,

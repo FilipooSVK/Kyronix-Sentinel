@@ -8,6 +8,8 @@ type Config struct {
 
 	Host HostConfig `yaml:"host"`
 
+	Metrics MetricsConfig `yaml:"metrics"`
+
 	History HistoryConfig `yaml:"history"`
 
 	Logging LoggingConfig `yaml:"logging"`
@@ -25,6 +27,13 @@ type HostConfig struct {
 	Environment string `yaml:"environment"`
 
 	Role string `yaml:"role"`
+}
+
+// MetricsConfig controls the Prometheus-compatible metrics endpoint.
+type MetricsConfig struct {
+	Enabled bool `yaml:"enabled"`
+
+	ListenAddress string `yaml:"listen_address"`
 }
 
 // HistoryConfig controls history storage.
@@ -71,7 +80,6 @@ type AutoInstallPolicyConfig struct {
 
 // Default returns default Sentinel configuration.
 func Default() Config {
-
 	return Config{
 		Daemon: DaemonConfig{
 			Interval: 30 * time.Second,
@@ -80,6 +88,11 @@ func Default() Config {
 		Host: HostConfig{
 			Environment: "",
 			Role:        "",
+		},
+
+		Metrics: MetricsConfig{
+			Enabled:       false,
+			ListenAddress: "127.0.0.1:19130",
 		},
 
 		History: HistoryConfig{
